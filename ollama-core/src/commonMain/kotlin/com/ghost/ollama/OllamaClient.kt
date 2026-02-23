@@ -3,7 +3,7 @@ package com.ghost.ollama
 import com.ghost.ollama.enum.PullStatus
 import com.ghost.ollama.enum.PushStatus
 import com.ghost.ollama.exception.*
-import com.ghost.ollama.exceptions.OllamaErrorResponse
+import com.ghost.ollama.exception.OllamaErrorResponse
 import com.ghost.ollama.models.VersionResponse
 import com.ghost.ollama.models.chat.*
 import com.ghost.ollama.models.common.ThinkOption

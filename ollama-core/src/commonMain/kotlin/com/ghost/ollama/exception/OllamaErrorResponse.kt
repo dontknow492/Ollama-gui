@@ -1,4 +1,4 @@
-package com.ghost.ollama.exceptions
+package com.ghost.ollama.exception
 
 import kotlinx.serialization.Serializable
 
