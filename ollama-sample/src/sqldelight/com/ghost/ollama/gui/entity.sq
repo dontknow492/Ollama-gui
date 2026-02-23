@@ -1,0 +1,196 @@
+import kotlin.Boolean;
+import kotlin.String;
+import kotlin.collections.List;
+
+-- ==========================================
+-- 1. SESSIONS TABLE
+-- ==========================================
+CREATE TABLE Session (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    session_type TEXT NOT NULL
+);
+
+CREATE INDEX idx_session_updated_at ON Session(updated_at DESC);
+
+-- ==========================================
+-- 2. MESSAGES TABLE
+-- ==========================================
+CREATE TABLE Message (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT,
+    thinking TEXT,
+    images TEXT AS List<String>,
+    tool_calls TEXT,
+    logprobs TEXT,
+    created_at INTEGER NOT NULL,
+    is_done INTEGER AS Boolean DEFAULT 0,
+    done_reason TEXT,
+    total_duration INTEGER,
+    load_duration INTEGER,
+    prompt_eval_count INTEGER,
+    prompt_eval_duration INTEGER,
+    eval_count INTEGER,
+    eval_duration INTEGER,
+
+    FOREIGN KEY (session_id) REFERENCES Session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_message_session_id ON Message(session_id);
+CREATE INDEX idx_message_created_at ON Message(created_at ASC);
+
+-- ==========================================
+-- QUERIES: SESSIONS
+-- ==========================================
+
+insertSession:
+INSERT INTO Session (id, title, created_at, updated_at, session_type)
+VALUES (?, ?, ?, ?, ?);
+
+getSessionsPaged:
+SELECT
+    id,
+    title,
+    created_at AS createdAt,
+    updated_at AS updatedAt,
+    session_type AS sessionType
+FROM Session
+ORDER BY updated_at DESC
+LIMIT :limit OFFSET :offset;
+
+getAllSessions:
+SELECT
+    id,
+    title,
+    created_at AS createdAt,
+    updated_at AS updatedAt,
+    session_type AS sessionType
+FROM Session
+ORDER BY updated_at DESC;
+
+updateSessionTimestamp:
+UPDATE Session
+SET updated_at = :updatedAt
+WHERE id = :id;
+
+deleteSession:
+DELETE FROM Session WHERE id = :id;
+
+-- ==========================================
+-- QUERIES: MESSAGES
+-- ==========================================
+
+insertMessage:
+INSERT INTO Message (
+    id, session_id, model_name, role, content, thinking,
+    images, tool_calls, logprobs, created_at, is_done
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+appendMessageContent:
+UPDATE Message
+SET content = coalesce(content, '') || :contentChunk
+WHERE id = :id;
+
+appendMessageThinking:
+UPDATE Message
+SET thinking = coalesce(thinking, '') || :thinkingChunk
+WHERE id = :id;
+
+finalizeMessage:
+UPDATE Message
+SET is_done = 1,
+    done_reason = :doneReason,
+    total_duration = :totalDuration,
+    load_duration = :loadDuration,
+    prompt_eval_count = :promptEvalCount,
+    prompt_eval_duration = :promptEvalDuration,
+    eval_count = :evalCount,
+    eval_duration = :evalDuration
+WHERE id = :id;
+
+getMessagesBySessionId:
+SELECT
+    id,
+    session_id AS sessionId,
+    model_name AS modelName,
+    role,
+    content,
+    thinking,
+    images,
+    tool_calls AS toolCalls,
+    logprobs,
+    created_at AS createdAt,
+    is_done AS isDone,
+    done_reason AS doneReason,
+    total_duration AS totalDuration,
+    load_duration AS loadDuration,
+    prompt_eval_count AS promptEvalCount,
+    prompt_eval_duration AS promptEvalDuration,
+    eval_count AS evalCount,
+    eval_duration AS evalDuration
+FROM Message
+WHERE session_id = :sessionId
+ORDER BY created_at ASC;
+
+getMessagesBySessionIdPaged:
+SELECT
+    id,
+    session_id AS sessionId,
+    model_name AS modelName,
+    role,
+    content,
+    thinking,
+    images,
+    tool_calls AS toolCalls,
+    logprobs,
+    created_at AS createdAt,
+    is_done AS isDone,
+    done_reason AS doneReason,
+    total_duration AS totalDuration,
+    load_duration AS loadDuration,
+    prompt_eval_count AS promptEvalCount,
+    prompt_eval_duration AS promptEvalDuration,
+    eval_count AS evalCount,
+    eval_duration AS evalDuration
+FROM Message
+WHERE session_id = :sessionId
+ORDER BY created_at DESC
+LIMIT :limit OFFSET :offset;
+
+countMessages:
+SELECT count(*) FROM Message WHERE session_id = :sessionId;
+
+-- Returns the total number of sessions (required for Paging3 to calculate total pages)
+countSessions:
+SELECT count(*) FROM Session;
+
+
+
+-- Rename a session
+updateSessionTitle:
+UPDATE Session
+SET title = :title, updated_at = :updatedAt
+WHERE id = :id;
+
+-- Search sessions
+searchSessionsPaged:
+SELECT
+    id,
+    title,
+    created_at AS createdAt,
+    updated_at AS updatedAt,
+    session_type AS sessionType
+FROM Session
+WHERE title LIKE '%' || :query || '%'
+ORDER BY updated_at DESC
+LIMIT :limit OFFSET :offset;
+
+countSearchSessions:
+SELECT count(*)
+FROM Session
+WHERE title LIKE '%' || :query || '%';
