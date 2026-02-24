@@ -3,7 +3,6 @@ package com.ghost.ollama.gui.ui.`interface`.chat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -13,14 +12,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import app.cash.paging.compose.LazyPagingItems
+import com.ghost.ollama.gui.ui.components.ChatScrollbar
 import com.ghost.ollama.gui.ui.components.InputBar
 import com.ghost.ollama.gui.ui.components.InputBarState
 import com.ghost.ollama.gui.ui.components.MessageBubble
-import com.ghost.ollama.gui.ui.viewmodel.ChatMessage
+import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
 
 @Composable
 fun ChatContentScreen(
-    messages: List<ChatMessage>,
+    messages: LazyPagingItems<UiChatMessage>,
     inputBarState: InputBarState,
     isMobile: Boolean,
     onMenuClick: () -> Unit,
@@ -31,11 +32,7 @@ fun ChatContentScreen(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.lastIndex)
-        }
-    }
+
 
     Box(
         modifier = modifier
@@ -44,6 +41,7 @@ fun ChatContentScreen(
     ) {
         LazyColumn(
             state = listState,
+            reverseLayout = true,
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 800.dp)
@@ -55,15 +53,31 @@ fun ChatContentScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages, key = { it.id }) { message ->
-                MessageBubble(
-                    message = message,
-                    onCopy = { onCopyMessage(message.id) },
-                    onDelete = { onDeleteMessage(message.id) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+            items(
+                count = messages.itemCount,
+                key = { index -> messages[index]?.id ?: index }
+            ) { index ->
+
+                val reversedIndex = messages.itemCount - 1 - index
+                val messageItem = messages[reversedIndex]
+
+                messageItem?.let { message ->
+                    MessageBubble(
+                        message = message,
+                        onCopy = { onCopyMessage(message.id) },
+                        onDelete = { onDeleteMessage(message.id) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
+
         }
+
+        ChatScrollbar(
+            listState = listState,
+            reverseLayout = true,
+            modifier = Modifier.padding(end = 4.dp)
+        )
 
         // Fade Overlay
         BottomFadeOverlay()
@@ -88,6 +102,14 @@ fun ChatContentScreen(
                 onStopClick = {},
                 onModelClick = { },
             )
+        }
+    }
+
+
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(messages.itemCount) {
+        if (messages.itemCount > 0) {
+            listState.scrollToItem(messages.itemCount - 1)
         }
     }
 }

@@ -2,11 +2,13 @@ package com.ghost.ollama.gui.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.PagingData
-import androidx.paging.cachedIn
-import com.ghost.ollama.gui.GetSessionsPaged
+import app.cash.paging.PagingData
+import app.cash.paging.cachedIn
+import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.repository.OllamaRepository
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -18,11 +20,13 @@ sealed interface SessionUiState {
     data object Loading : SessionUiState
 
     data class Success(
-        val pagedSessions: Flow<PagingData<GetSessionsPaged>>,
+        val pagedSessions: Flow<PagingData<SessionView>>,
         val searchQuery: String = "",
         val selectedSessionIds: Set<String> = emptySet(),
         val isSelectionModeActive: Boolean = false,
-        val isExporting: Boolean = false
+        val isExporting: Boolean = false,
+        val ollamaVersion: String,
+        val isOllamaRunning: Boolean // 👈 ADD THIS
     ) : SessionUiState
 
     data class Error(val message: String) : SessionUiState
@@ -32,6 +36,7 @@ sealed interface SessionUiState {
 sealed interface SessionSideEffect {
     data class ShowToast(val message: String) : SessionSideEffect
     data class ExportFileReady(val defaultFileName: String, val jsonContent: String) : SessionSideEffect
+    data class NewSessionCreated(val sessionId: String) : SessionSideEffect
 }
 
 // ==========================================
@@ -39,6 +44,7 @@ sealed interface SessionSideEffect {
 // ==========================================
 
 sealed interface SessionEvent {
+    data class CreateNew(val title: String? = null) : SessionEvent
     data class Search(val query: String) : SessionEvent
     data class RenameSession(val sessionId: String, val newTitle: String) : SessionEvent
     data class DeleteSession(val sessionId: String) : SessionEvent
@@ -47,6 +53,8 @@ sealed interface SessionEvent {
     data object BatchDelete : SessionEvent
     data class ExportSession(val sessionId: String) : SessionEvent
     data object BatchExport : SessionEvent
+    data class ToggleSessionPin(val sessionId: String) : SessionEvent
+    data object Retry : SessionEvent
 }
 
 // ==========================================
@@ -61,13 +69,32 @@ class SessionViewModel(
     private val _selectedSessionIds = MutableStateFlow<Set<String>>(emptySet())
     private val _isExporting = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
+    private val _ollamaVersion = MutableStateFlow<String?>(null)
+    private val _isOllamaRunning = repository.observerOllamaStatus()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    private val _connectionState =
+        combine(_ollamaVersion, _isOllamaRunning) { version, isRunning ->
+            version to isRunning
+        }
+
+
+    init {
+        fetchOllamaVersion()
+    }
+
 
     // Side effects channel
     private val _sideEffects = MutableSharedFlow<SessionSideEffect>()
     val sideEffects: SharedFlow<SessionSideEffect> = _sideEffects.asSharedFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val _pagedSessions: Flow<PagingData<GetSessionsPaged>> = _searchQuery
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+    private val _pagedSessions: Flow<PagingData<SessionView>> = _searchQuery
+        .debounce(300)
         .flatMapLatest { query ->
             if (query.isBlank()) {
                 repository.getSessionsPaged()
@@ -82,8 +109,16 @@ class SessionViewModel(
         _searchQuery,
         _selectedSessionIds,
         _isExporting,
-        _error
-    ) { query, selectedIds, isExporting, error ->
+        _error,
+        _connectionState
+    ) { query,
+        selectedIds,
+        isExporting,
+        error,
+        connection ->
+
+        val (version, isRunning) = connection
+
         if (error != null) {
             SessionUiState.Error(error)
         } else {
@@ -92,17 +127,40 @@ class SessionViewModel(
                 searchQuery = query,
                 selectedSessionIds = selectedIds,
                 isSelectionModeActive = selectedIds.isNotEmpty(),
-                isExporting = isExporting
+                isExporting = isExporting,
+                ollamaVersion = version ?: "Unknown",
+                isOllamaRunning = isRunning
             )
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = SessionUiState.Loading
-    )
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = SessionUiState.Loading
+        )
+
+
+    private fun fetchOllamaVersion() {
+        Napier.d("Fetching Ollama version")
+
+        viewModelScope.launch {
+            try {
+                _ollamaVersion.value = repository.ollamaVersion()
+            } catch (e: Exception) {
+                Napier.w("Ollama version fetch failed: ${e.message}")
+
+                // Do NOT treat this as fatal UI error
+                _ollamaVersion.value = null
+            }
+        }
+    }
 
     fun onEvent(event: SessionEvent) {
         when (event) {
+            is SessionEvent.CreateNew -> {
+                createNewSession(event.title)
+            }
+
             is SessionEvent.Search -> {
                 _searchQuery.value = event.query
                 // Clear selection when searching to prevent accidental operations
@@ -154,8 +212,35 @@ class SessionViewModel(
                 exportSessions(setOf(event.sessionId))
             }
 
+            is SessionEvent.ToggleSessionPin -> {
+                viewModelScope.launch {
+                    try {
+                        repository.toggleSessionPin(event.sessionId)
+                    } catch (e: Exception) {
+                        emitSideEffect(SessionSideEffect.ShowToast("Failed to toggle pin status"))
+                    }
+                }
+            }
+
+            is SessionEvent.Retry -> {
+                fetchOllamaVersion()
+            }
+
             SessionEvent.BatchExport -> {
                 exportSessions(_selectedSessionIds.value)
+            }
+
+        }
+    }
+
+    private fun createNewSession(title: String?) {
+        val title = title ?: "New Chat"
+        viewModelScope.launch {
+            try {
+                val sessionId = repository.createOrReuseSession(title)
+                emitSideEffect(SessionSideEffect.NewSessionCreated(sessionId))
+            } catch (e: Exception) {
+                emitSideEffect(SessionSideEffect.ShowToast("Failed to create new session"))
             }
         }
     }

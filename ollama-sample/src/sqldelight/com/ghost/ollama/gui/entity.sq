@@ -8,12 +8,23 @@ import kotlin.collections.List;
 CREATE TABLE Session (
     id TEXT NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
+    pinned INTEGER AS Boolean DEFAULT 0 NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     session_type TEXT NOT NULL
 );
 
 CREATE INDEX idx_session_updated_at ON Session(updated_at DESC);
+
+CREATE VIEW SessionView AS
+SELECT
+    id,
+    title,
+    pinned,
+    created_at AS createdAt,
+    updated_at AS updatedAt,
+    session_type AS sessionType
+FROM Session;
 
 -- ==========================================
 -- 2. MESSAGES TABLE
@@ -29,8 +40,10 @@ CREATE TABLE Message (
     tool_calls TEXT,
     logprobs TEXT,
     created_at INTEGER NOT NULL,
-    is_done INTEGER AS Boolean DEFAULT 0,
+    is_done INTEGER AS Boolean DEFAULT 0 NOT NULL,
     done_reason TEXT,
+    errored INTEGER AS Boolean DEFAULT 0 NOT NULL,
+    error_message TEXT,
     total_duration INTEGER,
     load_duration INTEGER,
     prompt_eval_count INTEGER,
@@ -44,34 +57,53 @@ CREATE TABLE Message (
 CREATE INDEX idx_message_session_id ON Message(session_id);
 CREATE INDEX idx_message_created_at ON Message(created_at ASC);
 
+
+CREATE VIEW MessageView AS
+SELECT
+    id,
+    session_id AS sessionId,
+    model_name AS modelName,
+    role,
+    content,
+    thinking,
+    images,
+    tool_calls AS toolCalls,
+    logprobs,
+    created_at AS createdAt,
+    is_done AS isDone,
+    done_reason AS doneReason,
+    total_duration AS totalDuration,
+    load_duration AS loadDuration,
+    prompt_eval_count AS promptEvalCount,
+    prompt_eval_duration AS promptEvalDuration,
+    eval_count AS evalCount,
+    eval_duration AS evalDuration
+FROM Message;
+
+
 -- ==========================================
 -- QUERIES: SESSIONS
 -- ==========================================
 
 insertSession:
-INSERT INTO Session (id, title, created_at, updated_at, session_type)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO Session (id, title, pinned, created_at, updated_at, session_type)
+VALUES (?, ?, ?, ?, ?, ?);
+
+getSessionById:
+SELECT *
+FROM SessionView
+WHERE id = :id;
 
 getSessionsPaged:
-SELECT
-    id,
-    title,
-    created_at AS createdAt,
-    updated_at AS updatedAt,
-    session_type AS sessionType
-FROM Session
-ORDER BY updated_at DESC
+SELECT *
+FROM SessionView
+ORDER BY pinned DESC, updatedAt DESC
 LIMIT :limit OFFSET :offset;
 
 getAllSessions:
-SELECT
-    id,
-    title,
-    created_at AS createdAt,
-    updated_at AS updatedAt,
-    session_type AS sessionType
-FROM Session
-ORDER BY updated_at DESC;
+SELECT *
+FROM SessionView
+ORDER BY pinned DESC, updatedAt DESC;
 
 updateSessionTimestamp:
 UPDATE Session
@@ -80,6 +112,49 @@ WHERE id = :id;
 
 deleteSession:
 DELETE FROM Session WHERE id = :id;
+
+-- Returns the total number of sessions (required for Paging3 to calculate total pages)
+countSessions:
+SELECT count(*) FROM Session;
+
+
+
+-- Rename a session
+updateSessionTitle:
+UPDATE Session
+SET title = :title, updated_at = :updatedAt
+WHERE id = :id;
+
+
+-- Toggle pin status
+toggleSessionPin:
+UPDATE Session
+SET
+    pinned = CASE WHEN pinned = 1 THEN 0 ELSE 1 END,
+    updated_at = :updatedAt
+WHERE id = :id;
+
+-- Search sessions
+searchSessionsPaged:
+SELECT *
+FROM SessionView
+WHERE title LIKE '%' || :query || '%'
+ORDER BY pinned DESC, updatedAt DESC
+LIMIT :limit OFFSET :offset;
+
+countSearchSessions:
+SELECT count(*)
+FROM Session
+WHERE title LIKE '%' || :query || '%';
+
+getLatestSession:
+SELECT *
+FROM Session
+ORDER BY updated_at DESC
+LIMIT 1;
+
+
+
 
 -- ==========================================
 -- QUERIES: MESSAGES
@@ -90,6 +165,11 @@ INSERT INTO Message (
     id, session_id, model_name, role, content, thinking,
     images, tool_calls, logprobs, created_at, is_done
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+
+getMessageById:
+SELECT * FROM MessageView
+WHERE id = :id;
 
 appendMessageContent:
 UPDATE Message
@@ -114,83 +194,51 @@ SET is_done = 1,
 WHERE id = :id;
 
 getMessagesBySessionId:
-SELECT
-    id,
-    session_id AS sessionId,
-    model_name AS modelName,
-    role,
-    content,
-    thinking,
-    images,
-    tool_calls AS toolCalls,
-    logprobs,
-    created_at AS createdAt,
-    is_done AS isDone,
-    done_reason AS doneReason,
-    total_duration AS totalDuration,
-    load_duration AS loadDuration,
-    prompt_eval_count AS promptEvalCount,
-    prompt_eval_duration AS promptEvalDuration,
-    eval_count AS evalCount,
-    eval_duration AS evalDuration
-FROM Message
-WHERE session_id = :sessionId
-ORDER BY created_at ASC;
+SELECT * FROM MessageView
+WHERE sessionId = :sessionId
+ORDER BY createdAt ASC;
 
 getMessagesBySessionIdPaged:
-SELECT
-    id,
-    session_id AS sessionId,
-    model_name AS modelName,
-    role,
-    content,
-    thinking,
-    images,
-    tool_calls AS toolCalls,
-    logprobs,
-    created_at AS createdAt,
-    is_done AS isDone,
-    done_reason AS doneReason,
-    total_duration AS totalDuration,
-    load_duration AS loadDuration,
-    prompt_eval_count AS promptEvalCount,
-    prompt_eval_duration AS promptEvalDuration,
-    eval_count AS evalCount,
-    eval_duration AS evalDuration
-FROM Message
-WHERE session_id = :sessionId
-ORDER BY created_at DESC
+SELECT * FROM MessageView
+WHERE sessionId = :sessionId
+ORDER BY createdAt ASC
 LIMIT :limit OFFSET :offset;
 
 countMessages:
 SELECT count(*) FROM Message WHERE session_id = :sessionId;
 
--- Returns the total number of sessions (required for Paging3 to calculate total pages)
-countSessions:
-SELECT count(*) FROM Session;
 
-
-
--- Rename a session
-updateSessionTitle:
-UPDATE Session
-SET title = :title, updated_at = :updatedAt
+deleteMessageById:
+DELETE FROM Message
 WHERE id = :id;
 
--- Search sessions
-searchSessionsPaged:
-SELECT
-    id,
-    title,
-    created_at AS createdAt,
-    updated_at AS updatedAt,
-    session_type AS sessionType
-FROM Session
-WHERE title LIKE '%' || :query || '%'
-ORDER BY updated_at DESC
-LIMIT :limit OFFSET :offset;
 
-countSearchSessions:
-SELECT count(*)
-FROM Session
-WHERE title LIKE '%' || :query || '%';
+getLastMessageOfSessionId:
+SELECT * FROM MessageView
+WHERE sessionId = :sessionId
+ORDER BY createdAt DESC
+LIMIT 1;
+
+updateMessageDoneStatus:
+UPDATE Message
+SET is_done = :isDone,
+    done_reason = :doneReason
+WHERE id = :id;
+
+updateMessageErrorStatus:
+UPDATE Message
+SET errored = :errored,
+    error_message = :errorMessage,
+    is_done = 1,
+    done_reason = 'error'
+WHERE id = :id;
+
+markAllUnfinishedAssistantMessagesAsError:
+UPDATE Message
+SET
+    errored = 1,
+    is_done = 1,
+    done_reason = 'error',
+    error_message = 'Some error occurred while processing the message.'
+WHERE role = 'assistant'
+AND is_done = 0;

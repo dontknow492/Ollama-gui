@@ -1,21 +1,27 @@
 package com.ghost.ollama.gui.ui.`interface`.chat
 
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.cash.paging.compose.collectAsLazyPagingItems
 import com.ghost.ollama.gui.ui.components.InputBarState
 import com.ghost.ollama.gui.ui.viewmodel.ChatSideEffect
 import com.ghost.ollama.gui.ui.viewmodel.ChatUiState
 import com.ghost.ollama.gui.ui.viewmodel.ChatViewModel
 import com.ghost.ollama.gui.ui.viewmodel.SessionViewModel
 import kotlinx.coroutines.launch
+import ollama_kmp.ollama_sample.generated.resources.Res
+import ollama_kmp.ollama_sample.generated.resources.face
+import ollama_kmp.ollama_sample.generated.resources.file_export
+import ollama_kmp.ollama_sample.generated.resources.more_vert
+import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
 
 
@@ -67,19 +73,21 @@ fun ChatScreen(
             MobileChatScreen(
                 state = state,
                 sessionState = sessionState,
+                viewModel = viewModel,
                 snackbarHostState = snackbarHostState,
-                onSendMessage = viewModel::sendMessage,
-                onCopyMessage = viewModel::copyMessage,
-                onDeleteMessage = viewModel::deleteMessage
+                onEvent = sessionViewModel::onEvent,
+                sideEffects = sessionViewModel.sideEffects,
+                onSessionClick = viewModel::setCurrentSession
             )
         } else {
             DesktopChatScreen(
                 state = state,
                 sessionState = sessionState,
+                viewModel = viewModel,
                 snackbarHostState = snackbarHostState,
-                onSendMessage = viewModel::sendMessage,
-                onCopyMessage = viewModel::copyMessage,
-                onDeleteMessage = viewModel::deleteMessage
+                onEvent = sessionViewModel::onEvent,
+                sideEffects = sessionViewModel.sideEffects,
+                onSessionClick = viewModel::setCurrentSession
             )
         }
     }
@@ -89,16 +97,17 @@ fun ChatScreen(
 @Composable
 fun ChatMainContent(
     state: ChatUiState,
+    viewModel: ChatViewModel,
     snackbarHostState: SnackbarHostState,
     isMobile: Boolean,
     onMenuClick: () -> Unit,
-    onSendMessage: (String) -> Unit,
-    onCopyMessage: (String) -> Unit,
-    onDeleteMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-
+//    var messages = state.messages
     var inputBarState by remember { mutableStateOf(InputBarState()) }
+
+    val messages = viewModel.messages.collectAsLazyPagingItems()
+
 
     LaunchedEffect(state.isGenerating) {
         inputBarState = inputBarState.copy(isGenerating = state.isGenerating, isSendEnabled = !state.isGenerating)
@@ -107,19 +116,16 @@ fun ChatMainContent(
 
 
 
-    Scaffold(
-        modifier = modifier,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(state.messages.firstOrNull()?.content ?: "")
-                }
-            )
-        }
-    ) { paddingValues ->
+    Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbarHostState) }, topBar = {
+        ChatTopBar(
+            appTitle = "Ollama",
+            chatTitle = state.title,
+            onExportClick = {},
+            onMoreClick = {},
+            onProfileClick = {})
+    }) { paddingValues ->
 
-        when (state.messages.isEmpty()) {
+        when (messages.itemCount == 0) {
             true -> EmptySessionScreen(
                 modifier = Modifier.padding(paddingValues),
                 userName = "Ollama",
@@ -128,18 +134,17 @@ fun ChatMainContent(
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
                 onSendClick = {
-                    onSendMessage(it)
+                    viewModel.sendMessage(it)
                     inputBarState = inputBarState.copy(inputText = "")
                 },
                 onSuggestionClick = {
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
-                onStopClick = {}
-            )
+                onStopClick = {})
 
             false -> ChatContentScreen(
                 modifier = Modifier.padding(paddingValues),
-                messages = state.messages,
+                messages = messages,
                 inputBarState = inputBarState,
                 isMobile = isMobile,
                 onMenuClick = onMenuClick,
@@ -147,17 +152,75 @@ fun ChatMainContent(
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
                 onSendClick = {
-                    onSendMessage(it)
+                    viewModel.sendMessage(it)
                     inputBarState = inputBarState.copy(inputText = "")
                 },
-                onCopyMessage = onCopyMessage,
-                onDeleteMessage = onDeleteMessage,
+                onCopyMessage = viewModel::copyMessage,
+                onDeleteMessage = viewModel::deleteMessage,
 
                 )
         }
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatTopBar(
+    appTitle: String, chatTitle: String, onExportClick: () -> Unit, onMoreClick: () -> Unit, onProfileClick: () -> Unit
+) {
+    TopAppBar(title = {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+
+            // Center Title (Chat Title)
+            Text(
+                text = chatTitle.ifBlank { "New Chat" },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            // Left App Title
+            Text(
+                text = appTitle,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+        }
+    }, actions = {
+
+        // Export Button
+        IconButton(onClick = onExportClick) {
+            Icon(
+                painter = painterResource(Res.drawable.file_export), contentDescription = "Export"
+            )
+        }
+
+        // More Button
+        IconButton(onClick = onMoreClick) {
+            Icon(
+                painter = painterResource(Res.drawable.more_vert), contentDescription = "More"
+            )
+        }
+
+        // User Avatar
+        IconButton(onClick = onProfileClick) {
+            Surface(
+                shape = CircleShape, tonalElevation = 2.dp, modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(Res.drawable.face),
+                        contentDescription = "Profile",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    })
+}
 
 
 

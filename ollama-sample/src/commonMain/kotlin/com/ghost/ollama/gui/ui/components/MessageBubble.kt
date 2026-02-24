@@ -2,8 +2,6 @@ package com.ghost.ollama.gui.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,8 +20,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.ghost.ollama.gui.ui.theme.AppTheme
-import com.ghost.ollama.gui.ui.viewmodel.ChatMessage
 import com.ghost.ollama.gui.ui.viewmodel.MessageState
+import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
 import com.mikepenz.markdown.m3.Markdown
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
@@ -40,229 +38,9 @@ import com.ghost.ollama.models.chat.ChatMessage.Role as MessageRole
  * A modern chat message bubble with role icons, timestamps,
  * expandable thinking, and detailed generation info.
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MessageBubbleOLd(
-    message: ChatMessage, onCopy: () -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier
-) {
-    val message = message.copy(thinking = "ya i am thinking", totalDuration = 100L)
-    val isUser = message.role == MessageRole.USER
-    val isDone = message.state is MessageState.Done
-    val hasThinking = !message.thinking.isNullOrBlank() && !isUser
-    val hasDetails =
-        message.totalDuration != null || message.loadDuration != null || message.promptEvalCount != null || message.evalCount != null
-
-    // Local expansion states
-    var showThinking by remember { mutableStateOf(false) }
-    var showDetails by remember { mutableStateOf(false) }
-    Column {
-        Row {
-            if (!isUser) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.padding(top = 8.dp).size(32.dp)
-                ) {
-                    Icon(
-                        painterResource(Res.drawable.smart_toy),
-                        contentDescription = "Assistant",
-                        modifier = Modifier.padding(6.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-            Column {
-                if (hasThinking) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(
-                        onClick = { showThinking = !showThinking },
-                        modifier = Modifier,
-                    ) {
-                        Text("Show Thinking")
-                        Icon(
-                            painterResource(Res.drawable.keyboard_arrow_down),
-                            contentDescription = "Toggle thinking",
-                            tint = if (showThinking) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                alpha = 0.7f
-                            ),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-                AnimatedVisibility(
-                    visible = showThinking && hasThinking,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Thinking",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Markdown(
-                                content = message.thinking ?: "",
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-
-                when (val msgState = message.state) {
-                    is MessageState.Loading -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Loading...", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-
-                    is MessageState.Generating -> {
-                        if (msgState.isThinking) {
-                            Text(
-                                "Thinking...",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-                        // Using standard Text here. Replace with Markdown() if available.
-                        Text(
-                            text = message.content ?: "", modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    is MessageState.Errored -> {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer
-                            )
-                        ) {
-                            Text(
-                                text = "Error: ${msgState.error}",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(8.dp)
-                            )
-                        }
-                    }
-
-                    else -> { // Idle / Done
-                        if (!message.content.isNullOrBlank()) {
-                            Markdown(
-                                content = message.content, modifier = Modifier.fillMaxWidth()
-                            )
-                        } else {
-                            Text(
-                                "(Empty)",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
-            }
-
-        }
-
-        if (isDone) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = if (isUser) 0.dp else 40.dp, // Align with bubble start (32 + 8)
-                        end = if (isUser) 4.dp else 0.dp,
-                        top = 4.dp
-                    ),
-                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Timestamp
-                Text(
-                    text = formatTimestamp(message.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Actions available when generation is fully complete
-                IconButton(onClick = onCopy, modifier = Modifier.size(24.dp)) {
-                    Icon(
-                        painterResource(Res.drawable.content_copy),
-                        contentDescription = "Copy",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                    Icon(
-                        painterResource(Res.drawable.delete_forever),
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                // Info button (if details exist)
-                if (hasDetails) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { showDetails = !showDetails },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            painterResource(Res.drawable.info),
-                            contentDescription = "Generation info",
-                            tint = if (showDetails) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                alpha = 0.7f
-                            ),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                // Thinking dropdown button (if thinking present)
-            }
-        }
-
-        AnimatedVisibility(
-            visible = showDetails && hasDetails,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            GenerationDetailsCard(
-                message = message,
-                modifier = Modifier
-                    .padding(
-                        start = if (isUser) 0.dp else 40.dp,
-                        end = if (isUser) 4.dp else 0.dp,
-                        top = 8.dp
-                    )
-                    .fillMaxWidth(0.85f)
-            )
-        }
-    }
-
-}
-
-
 @Composable
 fun MessageBubble(
-    message: ChatMessage,
+    message: UiChatMessage,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -287,7 +65,7 @@ fun MessageBubble(
 
 @Composable
 fun UserMessageBubble(
-    message: ChatMessage,
+    message: UiChatMessage,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -382,12 +160,12 @@ private fun ExpandableText(
 
 @Composable
 fun AssistantMessageBubble(
-    message: ChatMessage,
+    message: UiChatMessage,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val message = message.copy(thinking = "ya i am thinking", totalDuration = 100L)
+//    val message = message.copy(thinking = "ya i am thinking", totalDuration = 100L)
     val isDone = message.state is MessageState.Done
     val hasThinking = !message.thinking.isNullOrBlank()
     val hasDetails =
@@ -492,7 +270,7 @@ fun AssistantMessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: ChatMessage) {
+private fun MessageContent(message: UiChatMessage) {
     when (val state = message.state) {
 
         is MessageState.Loading -> {
@@ -531,7 +309,7 @@ private fun MessageContent(message: ChatMessage) {
 
 @Composable
 private fun MessageMetaRow(
-    message: ChatMessage,
+    message: UiChatMessage,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     showDetails: Boolean = false,
@@ -633,7 +411,7 @@ private fun MessageMetaRow(
  */
 @Composable
 private fun GenerationDetailsCard(
-    message: ChatMessage, modifier: Modifier = Modifier
+    message: UiChatMessage, modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier, colors = CardDefaults.cardColors(
@@ -767,7 +545,7 @@ fun MessageBubblePreview() {
 // Sample messages for preview
 private val sampleMessages = listOf(
     // System message
-    ChatMessage(
+    UiChatMessage(
         id = "1",
         role = MessageRole.SYSTEM,
         content = "Welcome to the chat! This is a system message with **markdown** support.\n\n- Feature 1\n- Feature 2\n- Feature 3",
@@ -777,7 +555,7 @@ private val sampleMessages = listOf(
     ),
 
     // User message
-    ChatMessage(
+    UiChatMessage(
         id = "2",
         role = MessageRole.USER,
         content = "Can you explain quantum computing in simple terms? I'd like to understand the basics.",
@@ -786,7 +564,7 @@ private val sampleMessages = listOf(
     ),
 
     // Assistant message with thinking and details
-    ChatMessage(
+    UiChatMessage(
         id = "3",
         role = MessageRole.ASSISTANT,
         content = """
@@ -832,7 +610,7 @@ private val sampleMessages = listOf(
     ),
 
     // Tool message
-    ChatMessage(
+    UiChatMessage(
         id = "4", role = MessageRole.TOOL, content = """
             ```json
             {
@@ -854,7 +632,7 @@ private val sampleMessages = listOf(
     ),
 
     // Assistant message with loading state
-    ChatMessage(
+    UiChatMessage(
         id = "5",
         role = MessageRole.ASSISTANT,
         content = "Generating response...",
@@ -863,7 +641,7 @@ private val sampleMessages = listOf(
     ),
 
     // Assistant message with generating state
-    ChatMessage(
+    UiChatMessage(
         id = "6",
         role = MessageRole.ASSISTANT,
         content = "I'm thinking about how to best explain quantum entanglement...",
@@ -872,7 +650,7 @@ private val sampleMessages = listOf(
     ),
 
     // User message with error state
-    ChatMessage(
+    UiChatMessage(
         id = "7",
         role = MessageRole.USER,
         content = "Show me something complex",
@@ -881,7 +659,7 @@ private val sampleMessages = listOf(
     ),
 
     // Assistant with long content and multiple details
-    ChatMessage(
+    UiChatMessage(
         id = "8",
         role = MessageRole.ASSISTANT,
         content = """

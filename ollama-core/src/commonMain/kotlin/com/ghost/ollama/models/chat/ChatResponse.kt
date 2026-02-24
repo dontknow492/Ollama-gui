@@ -26,5 +26,7 @@ data class ChatResponse(
     @SerialName("eval_duration")
     val evalDuration: Long? = null,
     val logprobs: List<LogProb>? = null
-)
+){
+    fun isActive(): Boolean = !done
+}
 

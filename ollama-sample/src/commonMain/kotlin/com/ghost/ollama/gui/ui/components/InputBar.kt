@@ -1,16 +1,27 @@
 package com.ghost.ollama.gui.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ollama_kmp.ollama_sample.generated.resources.*
@@ -26,167 +37,6 @@ data class InputBarState(
     val isSendEnabled: Boolean = false
 )
 
-@Composable
-fun InputBarOld(
-    modifier: Modifier = Modifier,
-    state: InputBarState,
-    onInputChanged: (String) -> Unit,
-    onAddClick: () -> Unit = {},
-    onToolsClick: () -> Unit = {},
-    onMicClick: () -> Unit = {},
-    onSendClick: (String) -> Unit = {},
-    onStopClick: () -> Unit = {}
-) {
-    var isModelDropdownExpanded by remember { mutableStateOf(false) }
-
-    // Dynamic surface matching the app's theme
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant, // Dynamic background
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant // Dynamic text/icon color
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 20.dp, bottom = 8.dp)
-        ) {
-            // Text Input Area
-            BasicTextField(
-                value = state.inputText,
-                onValueChange = onInputChanged,
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 16.sp
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 40.dp) // Gives it vertical space
-                    .padding(horizontal = 4.dp),
-                decorationBox = { innerTextField ->
-                    if (state.inputText.isEmpty()) {
-                        Text(
-                            text = state.placeholder,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontSize = 16.sp
-                        )
-                    }
-                    innerTextField()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Bottom Action Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Left Side: Add & Tools
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    IconButton(onClick = onAddClick) {
-                        Icon(
-                            painter = painterResource(Res.drawable.add),
-                            contentDescription = "Add attachment",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Tools Button
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onToolsClick() }
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Using Outline Tune as a close replacement for the custom Gemini tools icon
-                        Icon(
-                            painter = painterResource(Res.drawable.tune),
-                            contentDescription = "Tools",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Tools",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 15.sp
-                        )
-                    }
-                }
-
-                // Right Side: Model Selector (Fast) & Mic/Send
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Model Selector Button & Dropdown
-                    Box {
-                        val modelName = "Fast"
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { isModelDropdownExpanded = true }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = modelName,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 15.sp
-                            )
-                            Icon(
-                                painter = painterResource(Res.drawable.keyboard_arrow_down),
-                                contentDescription = "Select Model",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onMicClick) {
-                        Icon(
-                            painter = painterResource(Res.drawable.mic),
-                            contentDescription = "Microphone",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Show Send button dynamically when input exists
-                    when {
-                        state.isGenerating -> {
-                            IconButton(onClick = onStopClick) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.stop_circle),
-                                    contentDescription = "Stop Generating",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        state.isSendEnabled -> {
-                            IconButton(onClick = { onSendClick(state.inputText) }) {
-                                Icon(
-                                    painter = painterResource(Res.drawable.send),
-                                    contentDescription = "Send Message",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 //@Composable
 @Composable
@@ -201,25 +51,36 @@ fun InputBar(
     onModelClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
+
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 20.dp, bottom = 8.dp)
+                .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp)
         ) {
 
             InputTextField(
                 text = state.inputText,
                 placeholder = state.placeholder,
-                onTextChanged = onInputChanged
+                enabled = !state.isGenerating,
+                scrollState = scrollState,
+                focusRequester = focusRequester,
+                onTextChanged = onInputChanged,
+                onSend = {
+                    if (state.inputText.isNotBlank()) {
+                        onSendClick(state.inputText.trim())
+                    }
+                }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             BottomActionRow(
                 state = state,
@@ -238,29 +99,72 @@ fun InputBar(
 private fun InputTextField(
     text: String,
     placeholder: String,
-    onTextChanged: (String) -> Unit
+    enabled: Boolean,
+    scrollState: ScrollState,
+    focusRequester: FocusRequester,
+    onTextChanged: (String) -> Unit,
+    onSend: () -> Unit
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     BasicTextField(
         value = text,
         onValueChange = onTextChanged,
+        enabled = enabled,
         textStyle = TextStyle(
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 16.sp
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = KeyboardOptions(
+            imeAction = ImeAction.Send
+        ),
+        keyboardActions = KeyboardActions(
+            onSend = {
+                onSend()
+                keyboardController?.hide()
+            }
+        ),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
-            .padding(horizontal = 4.dp),
-        decorationBox = { innerTextField ->
-            if (text.isEmpty()) {
-                Text(
-                    text = placeholder,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    fontSize = 16.sp
-                )
+            .heightIn(min = 40.dp, max = 180.dp) // 👈 MAX HEIGHT
+            .verticalScroll(scrollState)
+            .focusRequester(focusRequester)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+
+                    // Enter to send (no shift)
+                    if (event.key == Key.Enter && !event.isShiftPressed) {
+                        onSend()
+                        return@onPreviewKeyEvent true
+                    }
+
+                    // Ctrl/Cmd + Enter = force send
+                    if (event.key == Key.Enter && event.isCtrlPressed) {
+                        onSend()
+                        return@onPreviewKeyEvent true
+                    }
+
+                    // ESC clears input
+                    if (event.key == Key.Escape) {
+                        onTextChanged("")
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
             }
-            innerTextField()
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        decorationBox = { innerTextField ->
+            Box {
+                if (text.isEmpty()) {
+                    Text(
+                        text = placeholder,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        fontSize = 16.sp
+                    )
+                }
+                innerTextField()
+            }
         }
     )
 }

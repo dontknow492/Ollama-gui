@@ -3,7 +3,6 @@ package com.ghost.ollama
 import com.ghost.ollama.enum.PullStatus
 import com.ghost.ollama.enum.PushStatus
 import com.ghost.ollama.exception.*
-import com.ghost.ollama.exception.OllamaErrorResponse
 import com.ghost.ollama.models.VersionResponse
 import com.ghost.ollama.models.chat.*
 import com.ghost.ollama.models.common.ThinkOption
@@ -25,10 +24,13 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.io.IOException
 import kotlinx.serialization.Serializable
@@ -165,6 +167,37 @@ class OllamaClient(
     // -------------------------------------------------------------------------
     // API METHODS
     // -------------------------------------------------------------------------
+
+    suspend fun isOllamaRunning(): Boolean {
+        return try {
+            val response = httpClient.get("$baseUrl/api/version")
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun observeOllamaStatus(
+        checkIntervalMillis: Long = 3000L
+    ): Flow<Boolean> = flow {
+
+        while (currentCoroutineContext().isActive) {
+
+            val isRunning = try {
+                val response = httpClient.get("$baseUrl/api/version")
+                response.status.value in 200..299
+            } catch (e: Exception) {
+                false
+            }
+
+            emit(isRunning)
+
+            delay(checkIntervalMillis)
+        }
+    }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+
 
     /**
      * Pulls a specified model from the repository.
@@ -356,7 +389,7 @@ class OllamaClient(
         tools: List<ChatTool>? = null,
         options: ChatOptions? = null,
         think: ThinkOption? = null,
-        keepAlive: String? = null,
+        keepAlive: String? = "5m",
         logprobs: Boolean? = null,
         topLogprobs: Int? = null
     ): Flow<ChatResponse> = flow {

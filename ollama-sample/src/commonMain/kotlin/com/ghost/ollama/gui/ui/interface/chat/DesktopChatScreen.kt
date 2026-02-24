@@ -12,18 +12,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ghost.ollama.gui.ui.`interface`.SideBar
-import com.ghost.ollama.gui.ui.viewmodel.ChatUiState
-import com.ghost.ollama.gui.ui.viewmodel.SessionUiState
+import com.ghost.ollama.gui.ui.viewmodel.*
+import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun DesktopChatScreen(
+    modifier: Modifier = Modifier,
     state: ChatUiState,
+    viewModel: ChatViewModel,
     sessionState: SessionUiState,
     snackbarHostState: SnackbarHostState,
-    onSendMessage: (String) -> Unit,
-    onCopyMessage: (String) -> Unit,
-    onDeleteMessage: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onSessionClick: (String) -> Unit,
+    onEvent: (SessionEvent) -> Unit,
+    sideEffects: Flow<SessionSideEffect>
+
 ) {
     var isDesktopSidebarExpanded by remember { mutableStateOf(false) }
 
@@ -38,7 +40,10 @@ fun DesktopChatScreen(
                     modifier = Modifier.width(320.dp),
                     state = sessionState,
                     expanded = true,
-                    onToggle = { isDesktopSidebarExpanded = false }
+                    onToggle = { isDesktopSidebarExpanded = false },
+                    onEvent = onEvent,
+                    sideEffects = sideEffects,
+                    onSessionClick = onSessionClick
                 )
             }
         } else {
@@ -49,19 +54,20 @@ fun DesktopChatScreen(
                 SideBar(
                     state = sessionState,
                     expanded = false,
-                    onToggle = { isDesktopSidebarExpanded = true }
+                    onToggle = { isDesktopSidebarExpanded = true },
+                    onEvent = onEvent,
+                    sideEffects = sideEffects,
+                    onSessionClick = onSessionClick
                 )
             }
         }
 
         ChatMainContent(
             state = state,
+            viewModel = viewModel,
             snackbarHostState = snackbarHostState,
             isMobile = false,
             onMenuClick = { }, // Unused on desktop
-            onSendMessage = onSendMessage,
-            onCopyMessage = onCopyMessage,
-            onDeleteMessage = onDeleteMessage,
             modifier = Modifier.weight(1f)
         )
     }

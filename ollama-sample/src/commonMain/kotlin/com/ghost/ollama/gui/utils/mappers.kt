@@ -12,8 +12,10 @@ fun ChatResponse.toEntity(
     id: String,
     sessionId: String,
     createdAtMillis: Long,
+    errorMessage: String?,
     json: Json = Json
 ): Message {
+    val errored = errorMessage != null
     return Message(
         id = id,
         session_id = sessionId,
@@ -33,7 +35,9 @@ fun ChatResponse.toEntity(
         prompt_eval_count = this.promptEvalCount?.toLong(),
         prompt_eval_duration = this.promptEvalDuration,
         eval_count = this.evalCount?.toLong(),
-        eval_duration = this.evalDuration
+        eval_duration = this.evalDuration,
+        errored = errored,
+        error_message = errorMessage
     )
 }
 
@@ -44,8 +48,10 @@ fun GenerateResponse.toEntity(
     id: String,
     sessionId: String,
     createdAtMillis: Long,
+    errorMessage: String?,
     json: Json = Json
 ): Message {
+    val errored = errorMessage != null
     return Message(
         id = id,
         session_id = sessionId,
@@ -64,6 +70,8 @@ fun GenerateResponse.toEntity(
         prompt_eval_count = this.promptEvalCount?.toLong(),
         prompt_eval_duration = this.promptEvalDuration,
         eval_count = this.evalCount?.toLong(),
-        eval_duration = this.evalDuration
+        eval_duration = this.evalDuration,
+        errored = errored,
+        error_message = errorMessage
     )
 }

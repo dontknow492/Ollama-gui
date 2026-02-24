@@ -34,6 +34,7 @@ kotlin {
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
 
+
                 // sqldelight
 //                implementation(libs.sqldelight.primitive.adaptor)
                 implementation(libs.sqldelight.androidx.paging3.extension)
@@ -49,9 +50,10 @@ kotlin {
 
                 //logging
                 implementation(libs.napier)
-                //paging
-//                implementation(libs.cash.paging.runtime)
-//                implementation(libs.cash.paging.compose)
+
+//                paging
+                implementation(libs.cash.paging.runtime)
+                implementation(libs.cash.paging.compose)
 
 
 //                implementation("org.jetbrains.kotlin:kotlin-stdlib-common")
@@ -72,6 +74,7 @@ kotlin {
                 implementation(libs.androidx.core.ktx)
 
                 implementation(libs.sqldelight.android.driver)
+
 
                 implementation(libs.koin.android)
             }

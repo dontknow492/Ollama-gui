@@ -7,20 +7,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ghost.ollama.gui.ui.`interface`.SideBar
-import com.ghost.ollama.gui.ui.viewmodel.ChatUiState
-import com.ghost.ollama.gui.ui.viewmodel.SessionUiState
+import com.ghost.ollama.gui.ui.viewmodel.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 
 @Composable
 fun MobileChatScreen(
+    modifier: Modifier = Modifier,
     state: ChatUiState,
+    viewModel: ChatViewModel,
     sessionState: SessionUiState,
     snackbarHostState: SnackbarHostState,
-    onSendMessage: (String) -> Unit,
-    onCopyMessage: (String) -> Unit,
-    onDeleteMessage: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onSessionClick: (String) -> Unit,
+    onEvent: (SessionEvent) -> Unit,
+    sideEffects: Flow<SessionSideEffect>
+
 ) {
     val mobileDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -34,19 +36,23 @@ fun MobileChatScreen(
                 SideBar(
                     state = sessionState,
                     expanded = true,
-                    onToggle = { scope.launch { mobileDrawerState.close() } }
+                    onToggle = { scope.launch { mobileDrawerState.close() } },
+                    onEvent = onEvent,
+                    sideEffects = sideEffects,
+                    onSessionClick = {
+                        onSessionClick(it)
+                        scope.launch { mobileDrawerState.close() }
+                    }
                 )
             }
         }
     ) {
         ChatMainContent(
             state = state,
+            viewModel = viewModel,
             snackbarHostState = snackbarHostState,
             isMobile = true,
-            onMenuClick = { scope.launch { mobileDrawerState.open() } },
-            onSendMessage = onSendMessage,
-            onCopyMessage = onCopyMessage,
-            onDeleteMessage = onDeleteMessage
+            onMenuClick = { scope.launch { mobileDrawerState.open() } }
         )
     }
 }

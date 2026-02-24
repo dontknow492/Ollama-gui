@@ -4,25 +4,28 @@ package com.ghost.ollama.gui.repository
 //import androidx.paging.PagingConfig
 //import androidx.paging.PagingData
 //import app.cash.paging.PagingData
-//import app.cash.paging.Pager
-//import app.cash.paging.PagingConfig
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.PagingData
+import app.cash.paging.Pager
+import app.cash.paging.PagingConfig
+import app.cash.paging.PagingData
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToOneOrNull
 import app.cash.sqldelight.paging3.QueryPagingSource
 import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.gui.EntityQueries
-import com.ghost.ollama.gui.GetMessagesBySessionId
-import com.ghost.ollama.gui.GetMessagesBySessionIdPaged
-import com.ghost.ollama.gui.GetSessionsPaged
+import com.ghost.ollama.gui.MessageView
+import com.ghost.ollama.gui.SessionView
+import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.utils.toUiChatMessage
 import com.ghost.ollama.models.chat.ChatMessage
 import com.ghost.ollama.models.chat.ChatResponse
 import com.ghost.ollama.models.generate.GenerateResponse
 import com.ghost.ollama.models.modelMGMT.tags.ListModelsResponse
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
@@ -34,14 +37,44 @@ class OllamaRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
+    suspend fun ollamaVersion(): String {
+        return ollamaClient.ollamaVersion().version
+    }
+
+    fun observerOllamaStatus(): Flow<Boolean> {
+        return ollamaClient.observeOllamaStatus()
+    }
+
     // ==========================================
     // SESSIONS MANAGEMENT
     // ==========================================
 
+    init {
+        recoverUnfinishedMessages()
+    }
+
+    private fun recoverUnfinishedMessages() {
+        entityQueries.markAllUnfinishedAssistantMessagesAsError()
+    }
+
     /**
-     * Creates a new chat or generate session.
+     * Creates a new session.
      */
-    fun createSession(title: String, sessionType: String = "CHAT"): String {
+    fun createOrReuseSession(title: String, sessionType: String = "CHAT"): String {
+        val latestSession = entityQueries.getLatestSession().executeAsOneOrNull()
+
+        if (latestSession != null) {
+            val messageCount = entityQueries
+                .countMessages(latestSession.id)
+                .executeAsOne()
+
+            if (messageCount == 0L) {
+                // Reuse existing empty session
+                return latestSession.id
+            }
+        }
+
+        // Otherwise create new session
         val sessionId = generateUuid()
         val now = currentTimeMillis()
 
@@ -50,9 +83,22 @@ class OllamaRepository(
             title = title,
             created_at = now,
             updated_at = now,
+            pinned = false,
             session_type = sessionType
         )
+
         return sessionId
+    }
+
+    fun toggleSessionPin(sessionId: String) {
+        entityQueries.toggleSessionPin(currentTimeMillis(), sessionId)
+    }
+
+    fun getSessionById(sessionId: String): Flow<SessionView?> {
+        return entityQueries
+            .getSessionById(sessionId)
+            .asFlow()
+            .mapToOneOrNull(ioDispatcher)
     }
 
     /**
@@ -65,7 +111,7 @@ class OllamaRepository(
     /**
      * Returns a PagingData Flow of Sessions, ordered by latest updated.
      */
-    fun getSessionsPaged(pageSize: Int = 20): Flow<PagingData<GetSessionsPaged>> {
+    fun getSessionsPaged(pageSize: Int = 20): Flow<PagingData<SessionView>> {
         return Pager(
             config = PagingConfig(pageSize = pageSize, enablePlaceholders = false),
             pagingSourceFactory = {
@@ -85,11 +131,40 @@ class OllamaRepository(
     // MESSAGE HISTORY (PAGING)
     // ==========================================
 
+
+    fun getMessageById(messageId: String): MessageView? {
+        return entityQueries.getMessageById(messageId).executeAsOneOrNull()
+    }
+
+    suspend fun updateMessageState(messageId: String, isDone: Boolean, doneReason: String) {
+        entityQueries.updateMessageDoneStatus(
+            id = messageId,
+            isDone = isDone,
+            doneReason = doneReason,
+        )
+    }
+
+    suspend fun updateMessageError(messageId: String, error: String, isError: Boolean) {
+        entityQueries.updateMessageErrorStatus(
+            id = messageId,
+            errored = isError,
+            errorMessage = error
+        )
+    }
+
+    fun observeSessionExists(sessionId: String): Flow<Boolean> {
+        return entityQueries
+            .getSessionById(sessionId)
+            .asFlow()
+            .mapToOneOrNull(ioDispatcher)
+            .map { it != null }
+    }
+
     /**
      * Returns a PagingData Flow of Messages for a specific session.
      * Useful for lazy-loading very long chat histories in the UI.
      */
-    fun getMessagesPaged(sessionId: String, pageSize: Int = 30): Flow<PagingData<GetMessagesBySessionIdPaged>> {
+    fun getMessagesPaged(sessionId: String, pageSize: Int = 30): Flow<PagingData<MessageView>> {
         return Pager(
             config = PagingConfig(pageSize = pageSize, enablePlaceholders = false),
             pagingSourceFactory = {
@@ -121,6 +196,14 @@ class OllamaRepository(
     ): Flow<ChatResponse> {
         val now = currentTimeMillis()
 
+
+        val messageCountBefore = entityQueries
+            .countMessages(sessionId)
+            .executeAsOne()
+
+        val isFirstMessage = messageCountBefore == 0L
+
+
         // 1. Save User's message to DB
         entityQueries.insertMessage(
             id = generateUuid(),
@@ -135,6 +218,22 @@ class OllamaRepository(
             created_at = now,
             is_done = true
         )
+
+        // 🔥 1.5 If first message → update session title
+        if (isFirstMessage) {
+            val trimmedTitle = content
+                .trim()
+                .replace("\n", " ")
+                .take(60) // limit length
+
+            entityQueries.updateSessionTitle(
+                title = trimmedTitle.ifBlank { "New Chat" },
+                updatedAt = now,
+                id = sessionId
+            )
+        }
+
+
         entityQueries.updateSessionTimestamp(now, sessionId)
 
         // 2. Build the context history for Ollama from the DB
@@ -158,7 +257,9 @@ class OllamaRepository(
 
         // 4. Trigger Network Request & Sync Stream chunks to DB
         return ollamaClient.chatStream(model = modelName, messages = history)
+
             .onEach { responseChunk ->
+                delay(50) // Simulate network delay for testing streaming in UI
                 // Fast SQLite String concatenation for tokens
                 if (responseChunk.message.content.isNotEmpty()) {
                     entityQueries.appendMessageContent(responseChunk.message.content, assistantMsgId)
@@ -272,7 +373,7 @@ class OllamaRepository(
     /**
      * Returns a PagingData Flow of Sessions filtered by a search query.
      */
-    fun searchSessionsPaged(query: String, pageSize: Int = 20): Flow<PagingData<GetSessionsPaged>> {
+    fun searchSessionsPaged(query: String, pageSize: Int = 20): Flow<PagingData<SessionView>> {
         return Pager(
             config = PagingConfig(pageSize = pageSize, enablePlaceholders = false),
             pagingSourceFactory = {
@@ -286,7 +387,6 @@ class OllamaRepository(
                             query = query,
                             limit = limit,
                             offset = offset,
-                            mapper = ::GetSessionsPaged
                         )
                     }
                 )
@@ -322,13 +422,24 @@ class OllamaRepository(
         return json.encodeToString(exportData)
     }
 
+    fun deleteChatMessage(messageId: String) {
+        entityQueries.deleteMessageById(messageId)
+    }
+
+    // Extension for your repository if needed
+    suspend fun getLastUserMessage(sessionId: String): UiChatMessage? {
+        // Implement based on your data layer
+        return entityQueries.getLastMessageOfSessionId(sessionId).executeAsOneOrNull()?.toUiChatMessage(sessionId)
+
+    }
+
 
     // ==========================================
     // UTILS & MAPPERS
     // ==========================================
 
     /** Maps a DB Entity to API Request Model for Context History */
-    private fun GetMessagesBySessionId.toApiChatMessage(): ChatMessage {
+    private fun MessageView.toApiChatMessage(): ChatMessage {
         val mappedRole = ChatMessage.Role.entries.firstOrNull {
             it.name.equals(this.role, ignoreCase = true)
         } ?: ChatMessage.Role.USER

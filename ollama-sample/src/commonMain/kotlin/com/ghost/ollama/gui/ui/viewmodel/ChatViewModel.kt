@@ -2,43 +2,16 @@ package com.ghost.ollama.gui.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.cash.paging.PagingData
 import com.ghost.ollama.gui.repository.OllamaRepository
-import kotlinx.coroutines.delay
+import com.ghost.ollama.gui.utils.mapToUiChatMessages
+import com.ghost.ollama.models.chat.ChatOptions
+import com.ghost.ollama.models.chat.ChatResponse
+import io.github.aakira.napier.Napier
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import java.util.*
 import com.ghost.ollama.models.chat.ChatMessage.Role as MessageRole
-
-
-// --- DATA MODELS ---
-
-@Serializable
-enum class ResponseFormat {
-    @SerialName("json")
-    JSON,
-    @SerialName("text")
-    TEXT
-}
-
-@Serializable
-data class ChatOptions(
-    val seed: Int? = null,
-    val temperature: Float? = null,
-    @SerialName("top_k")
-    val topK: Int? = null,
-    @SerialName("top_p")
-    val topP: Float? = null,
-    @SerialName("min_p")
-    val minP: Float? = null,
-    val stop: String? = null,
-    @SerialName("num_ctx")
-    val numCtx: Int? = null,
-    @SerialName("num_predict")
-    val numPredict: Int? = null,
-    val format: ResponseFormat? = null
-)
 
 /**
  * Represents the granular sub-state of an individual message,
@@ -52,7 +25,7 @@ sealed class MessageState {
     data class Errored(val error: String) : MessageState() // Failed to generate/send
 }
 
-data class ChatMessage(
+data class UiChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val sessionId: String = "",
     val modelName: String = "",
@@ -76,7 +49,8 @@ data class ChatMessage(
 // --- STATE & SIDE EFFECTS ---
 
 data class ChatUiState(
-    val messages: List<ChatMessage> = emptyList(),
+    val messages: PagingData<UiChatMessage> = PagingData.empty(), // Using PagingData for efficient loading of large chat histories
+    val title: String = "New Chat", // Optional session title
     val options: ChatOptions = ChatOptions(temperature = 0.7f), // Default options
     val isGenerating: Boolean = false // Overall chat lock state
 )
@@ -87,7 +61,6 @@ sealed class ChatSideEffect {
 }
 
 // --- VIEW MODEL ---
-
 /**
  * Note: If using Android, this would inherit from androidx.lifecycle.ViewModel.
  * Here it is presented as a plain class for broader Kotlin compatibility,
@@ -95,547 +68,277 @@ sealed class ChatSideEffect {
  */
 class ChatViewModel(
     private val ollamaRepository: OllamaRepository,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
+    // -------------------------------------------------------------------------
+    // Session and options
+    // -------------------------------------------------------------------------
+    private val sessionId = MutableStateFlow(generateSessionId())
+    private val chatOptions = MutableStateFlow(ChatOptions(temperature = 0.7f))
+
+    // -------------------------------------------------------------------------
+    // UI state
+    // -------------------------------------------------------------------------
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val _effect = MutableSharedFlow<ChatSideEffect>()
     val effect: SharedFlow<ChatSideEffect> = _effect.asSharedFlow()
 
-    /**
-     * Sends a new user message and triggers the AI response simulation.
-     */
-    fun sendMessage(text: String) {
-        if (text.isBlank() || _state.value.isGenerating) return
+    // Generation state
+    private var currentStreamingJob: Job? = null
+    private val _isGenerating = MutableStateFlow(false)
+    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
-        val userMessage = ChatMessage(
-            sessionId = "default-session",
-            role = MessageRole.USER,
-            content = text,
-            state = MessageState.Done,
-            isDone = true
-        )
-
-        val assistantMessageId = UUID.randomUUID().toString()
-        val initialAssistantMessage = ChatMessage(
-            id = assistantMessageId,
-            sessionId = "default-session",
-            role = MessageRole.ASSISTANT,
-            content = "",
-            state = MessageState.Loading,
-            isDone = false
-        )
-
-        _state.update { currentState ->
-            currentState.copy(
-                messages = currentState.messages + userMessage + initialAssistantMessage,
-                isGenerating = true
+    // -------------------------------------------------------------------------
+    // Messages flow (paged)
+    // -------------------------------------------------------------------------
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val messages: Flow<PagingData<UiChatMessage>> = sessionId
+        .flatMapLatest { currentId ->
+            Napier.d(tag = "ChatViewModel", message = "Switching to session: $currentId")
+            ollamaRepository.getMessagesPaged(currentId).mapToUiChatMessages(
+                sessionId = currentId,
+                isStreaming = _isGenerating.value
             )
+
         }
 
-        // Trigger the AI generation process
-        generateAiResponse(assistantMessageId)
+    init {
+        Napier.d(tag = "ChatViewModel", message = "ViewModel initialized with sessionId: ${sessionId.value}")
+        observeSessionTitle()
+        collectMessages() // optional: if you want to update state with paging data
     }
 
     /**
-     * Deletes a specific message by its ID.
+     * Collects messages and updates the state's messages field.
+     * This is optional if you want to keep the messages inside ChatUiState.
+     * Alternatively, the UI can collect `messages` directly.
      */
-    fun deleteMessage(messageId: String) {
-        _state.update { currentState ->
-            currentState.copy(
-                messages = currentState.messages.filterNot { it.id == messageId }
-            )
+    private fun collectMessages() {
+        viewModelScope.launch {
+            messages.collectLatest { pagingData ->
+                _state.update { it.copy(messages = pagingData) }
+            }
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeSessionTitle() {
+        viewModelScope.launch {
+            sessionId
+                .flatMapLatest { currentId ->
+                    ollamaRepository.getSessionById(currentId)
+                }
+                .collectLatest { session ->
+                    _state.update { it.copy(title = session?.title ?: "New Chat") }
+                    Napier.d(tag = "ChatViewModel", message = "Session title updated: ${session?.title}")
+                }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Public actions
+    // -------------------------------------------------------------------------
+
     /**
-     * Emits a side effect to the UI to copy the message content to the device clipboard.
+     * Switch to a different chat session.
      */
-    fun copyMessage(messageId: String) {
-        val messageToCopy = _state.value.messages.find { it.id == messageId }
-        messageToCopy?.content?.let { content ->
-            viewModelScope.launch {
-                _effect.emit(ChatSideEffect.CopyToClipboard(content))
+    fun setCurrentSession(newSessionId: String) {
+        Napier.d(tag = "ChatViewModel", message = "Switching session from ${sessionId.value} to $newSessionId")
+        sessionId.value = newSessionId
+    }
+
+    /**
+     * Send a new user message and start streaming the assistant's response.
+     */
+    fun sendMessage(content: String, model: String = "qwen3:4b", images: List<String>? = null) {
+        if (_isGenerating.value) {
+            Napier.w(tag = "ChatViewModel", message = "sendMessage ignored: already generating")
+            return
+        }
+
+//        val model = chatOptions.value.model.ifEmpty { "qwen3:4b" } // fallback
+        Napier.d(
+            tag = "ChatViewModel",
+            message = "sendMessage: content='$content', model=$model, images=${images?.size}"
+        )
+
+        cancelCurrentGeneration() // ensure no stale job
+
+        currentStreamingJob = viewModelScope.launch(ioDispatcher) {
+            _isGenerating.value = true
+            _state.update { it.copy(isGenerating = true) }
+
+            try {
+                ollamaRepository.sendChatMessageStreaming(
+                    sessionId = sessionId.value,
+                    modelName = model,
+                    content = content,
+                    role = MessageRole.USER
+                ).collect { response ->
+                    handleStreamResponse(response)
+                }
+            } catch (e: CancellationException) {
+                handleCancellation()
+            } catch (e: Exception) {
+                handleError(e)
+            } finally {
+                _isGenerating.value = false
+                _state.update { it.copy(isGenerating = false) }
+                currentStreamingJob = null
+                Napier.d(tag = "ChatViewModel", message = "Streaming finished (finally)")
             }
         }
     }
 
     /**
-     * Updates the chat options (temperature, top_p, etc.).
+     * Stop the ongoing generation.
+     */
+    fun stopGeneration() {
+        Napier.d(tag = "ChatViewModel", message = "stopGeneration called")
+        cancelCurrentGeneration()
+    }
+
+    /**
+     * Delete a specific message.
+     */
+    fun deleteMessage(messageId: String) {
+        Napier.d(tag = "ChatViewModel", message = "deleteMessage: $messageId")
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                ollamaRepository.deleteChatMessage(messageId)
+            } catch (e: Exception) {
+                Napier.e(tag = "ChatViewModel", message = "Failed to delete message", throwable = e)
+            }
+        }
+    }
+
+    /**
+     * Copy message content to clipboard.
+     */
+    fun copyMessage(messageId: String) {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                val message = ollamaRepository.getMessageById(messageId)
+                if (message != null) {
+                    val content = message.content ?: ""
+                    _effect.emit(ChatSideEffect.CopyToClipboard(content))
+                    Napier.d(tag = "ChatViewModel", message = "copyMessage: emitted copy effect for message $messageId")
+                } else {
+                    Napier.w(tag = "ChatViewModel", message = "copyMessage: message not found $messageId")
+                }
+            } catch (e: Exception) {
+                Napier.e(tag = "ChatViewModel", message = "copyMessage failed", throwable = e)
+            }
+        }
+    }
+
+    /**
+     * Update chat options (temperature, model, etc.)
      */
     fun updateOptions(newOptions: ChatOptions) {
+        Napier.d(tag = "ChatViewModel", message = "updateOptions: $newOptions")
+        chatOptions.value = newOptions
         _state.update { it.copy(options = newOptions) }
     }
 
     /**
-     * Clears the entire chat history.
+     * Clear the current chat (starts a new session).
      */
     fun clearChat() {
-        _state.update { it.copy(messages = emptyList(), isGenerating = false) }
-    }
-
-    /**
-     * Internal helper to update a specific message's content and state.
-     */
-    private fun updateMessage(messageId: String, content: String, state: MessageState, isDone: Boolean? = null) {
-        _state.update { currentState ->
-            val updatedMessages = currentState.messages.map { msg ->
-                if (msg.id == messageId) {
-                    msg.copy(
-                        content = content,
-                        state = state,
-                        isDone = isDone ?: msg.isDone
-                    )
-                } else {
-                    msg
-                }
-            }
-            currentState.copy(messages = updatedMessages)
-        }
-    }
-
-    /**
-     * Simulates a network call and streaming response.
-     * In a real app, this would connect to an LLM repository/API.
-     */
-    private fun generateAiResponse(messageId: String) {
+        Napier.d(tag = "ChatViewModel", message = "clearChat")
         viewModelScope.launch {
-            try {
-                // 1. Simulate Network Delay (Loading State)
-                delay(800)
-
-                // 2. Transition to Generating (Thinking)
-                updateMessage(messageId, "", MessageState.Generating(isThinking = true))
-                delay(1000) // Simulating "Thinking..." time
-
-                // 3. Start streaming tokens (Generating)
-                val simulatedTokens = listOf(
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
-                    "Here ",
-                    "is ",
-                    "your ",
-                    "response ",
-                    "based ",
-                    "on ",
-                    "the ",
-                    "options.",
+            cancelCurrentGeneration()
+            sessionId.value = generateSessionId()
+            _state.update {
+                it.copy(
+                    messages = PagingData.empty(), // reset paging data
+                    isGenerating = false
                 )
-                var currentContent = ""
+            }
+            _effect.emit(ChatSideEffect.ShowToast("Chat cleared"))
+        }
+    }
 
-                for (token in simulatedTokens) {
-                    currentContent += token
-                    updateMessage(messageId, currentContent, MessageState.Generating(isThinking = false))
-                    delay(10) // Simulate streaming delay between tokens
+    /**
+     * Retry the last user message.
+     */
+    fun retryLastMessage() {
+        viewModelScope.launch(ioDispatcher) {
+            val lastUser = ollamaRepository.getLastUserMessage(sessionId.value)
+            if (lastUser != null) {
+                Napier.d(tag = "ChatViewModel", message = "retryLastMessage: resending '${lastUser.content}'")
+                withContext(Dispatchers.Main) {
+                    sendMessage(
+                        content = lastUser.content ?: "",
+                        images = lastUser.images
+                    )
                 }
-
-                // 4. Mark as Done
-                updateMessage(messageId, currentContent, MessageState.Done, isDone = true)
-
-            } catch (e: Exception) {
-                // 5. Handle Errors
-                updateMessage(
-                    messageId,
-                    "An error occurred.",
-                    MessageState.Errored(e.message ?: "Unknown Error"),
-                    isDone = true
-                )
-                _effect.emit(ChatSideEffect.ShowToast("Failed to generate response"))
-            } finally {
-                // Unlock the chat input
-                _state.update { it.copy(isGenerating = false) }
+            } else {
+                Napier.w(tag = "ChatViewModel", message = "retryLastMessage: no user message found")
             }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private fun cancelCurrentGeneration() {
+        currentStreamingJob?.cancel(CancellationException("Generation stopped by user"))
+        currentStreamingJob = null
+        _isGenerating.value = false
+        _state.update { it.copy(isGenerating = false) }
+    }
+
+    private suspend fun handleStreamResponse(response: ChatResponse) {
+        Napier.v(
+            tag = "ChatViewModel",
+            message = "Stream chunk: done=${response.done}, content length=${response.message.content.length}"
+        )
+        if (response.done) {
+            withContext(Dispatchers.Main) {
+                _effect.emit(ChatSideEffect.ShowToast("Message completed"))
+            }
+            Napier.d(tag = "ChatViewModel", message = "Stream completed. Reason: ${response.doneReason}")
+        }
+    }
+
+    private suspend fun handleCancellation() {
+        withContext(Dispatchers.Main) {
+            _effect.emit(ChatSideEffect.ShowToast("Generation stopped"))
+        }
+        Napier.i(tag = "ChatViewModel", message = "Stream cancelled by user")
+        // Optionally mark the last assistant message as errored
+        markLastAssistantAsErrored("Stopped by user")
+    }
+
+    private suspend fun handleError(e: Exception) {
+        Napier.e(tag = "ChatViewModel", message = "Stream error", throwable = e)
+        withContext(Dispatchers.Main) {
+            _effect.emit(ChatSideEffect.ShowToast("Error: ${e.message}"))
+        }
+        markLastAssistantAsErrored(e.message ?: "Unknown error")
+    }
+
+    private suspend fun markLastAssistantAsErrored(errorText: String) {
+        withContext(ioDispatcher) {
+            val lastMsg = ollamaRepository.getLastUserMessage(sessionId.value)
+            if (lastMsg != null && lastMsg.role == MessageRole.ASSISTANT && lastMsg.state != MessageState.Done) {
+                ollamaRepository.updateMessageError(messageId = lastMsg.id, isError = true, error = errorText)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Napier.d(tag = "ChatViewModel", message = "onCleared, cancelling any remaining job")
+        cancelCurrentGeneration()
+    }
+
+    private fun generateSessionId(): String {
+        return System.currentTimeMillis().toString(16)
     }
 }
