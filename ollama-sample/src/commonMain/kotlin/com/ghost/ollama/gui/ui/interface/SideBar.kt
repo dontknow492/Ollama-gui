@@ -36,9 +36,9 @@ import com.ghost.ollama.gui.ui.components.ChatScrollbar
 import com.ghost.ollama.gui.ui.components.ConfirmationDialog
 import com.ghost.ollama.gui.ui.components.PinButton
 import com.ghost.ollama.gui.ui.components.SessionMenu
-import com.ghost.ollama.gui.ui.viewmodel.SessionEvent
-import com.ghost.ollama.gui.ui.viewmodel.SessionSideEffect
-import com.ghost.ollama.gui.ui.viewmodel.SessionUiState
+import com.ghost.ollama.gui.viewmodel.SessionEvent
+import com.ghost.ollama.gui.viewmodel.SessionSideEffect
+import com.ghost.ollama.gui.viewmodel.SessionUiState
 import kotlinx.coroutines.flow.Flow
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.vectorResource

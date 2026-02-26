@@ -14,8 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ghost.ollama.gui.repository.AppTheme
-import com.ghost.ollama.gui.ui.viewmodel.GlobalSettingsEditState
-import com.ghost.ollama.gui.ui.viewmodel.GlobalSettingsViewModel
+import com.ghost.ollama.gui.viewmodel.GlobalSettingsEditState
+import com.ghost.ollama.gui.viewmodel.GlobalSettingsViewModel
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel

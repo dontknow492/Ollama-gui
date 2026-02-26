@@ -14,12 +14,13 @@ import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.gui.EntityQueries
 import com.ghost.ollama.gui.MessageView
 import com.ghost.ollama.gui.SessionView
-import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.viewmodel.UiChatMessage
 import com.ghost.ollama.gui.utils.toUiChatMessage
 import com.ghost.ollama.models.chat.ChatMessage
 import com.ghost.ollama.models.chat.ChatOptions
 import com.ghost.ollama.models.chat.ChatResponse
 import com.ghost.ollama.models.generate.GenerateResponse
+import com.ghost.ollama.models.modelMGMT.ShowModelResponse
 import com.ghost.ollama.models.modelMGMT.tags.ListModelsResponse
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -498,6 +499,15 @@ class OllamaRepository(
 
     fun getLastMessage(): MessageView? {
         return entityQueries.getLastMessage().executeAsOneOrNull()
+    }
+
+    // Models
+    fun observeModels(): Flow<ListModelsResponse?> {
+        return ollamaClient.observeModels()
+    }
+
+    suspend fun getModelDetail(name: String, verbose: Boolean = false): ShowModelResponse {
+        return ollamaClient.showModel(name, verbose)
     }
 
 

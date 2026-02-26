@@ -22,8 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.ghost.ollama.gui.repository.AppTheme
 import com.ghost.ollama.gui.ui.theme.OllamaTheme
-import com.ghost.ollama.gui.ui.viewmodel.MessageState
-import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.viewmodel.MessageState
+import com.ghost.ollama.gui.viewmodel.UiChatMessage
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence

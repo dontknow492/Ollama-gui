@@ -5,12 +5,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-
 @Composable
-expect fun BoxScope.ChatScrollbar(
+actual fun BoxScope.ChatScrollbar(
     listState: LazyListState,
-    reverseLayout: Boolean = false,
-    modifier: Modifier = Modifier
-)
-
-
+    reverseLayout: Boolean,
+    modifier: Modifier
+) {
+    // No-op on Android
+    // Android uses system scrollbars automatically
+}

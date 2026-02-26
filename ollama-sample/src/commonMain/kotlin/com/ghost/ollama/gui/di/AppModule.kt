@@ -6,9 +6,9 @@ import com.ghost.ollama.gui.Message
 import com.ghost.ollama.gui.OllamaDatabase
 import com.ghost.ollama.gui.repository.OllamaRepository
 import com.ghost.ollama.gui.repository.SettingsRepository
-import com.ghost.ollama.gui.ui.viewmodel.ChatViewModel
-import com.ghost.ollama.gui.ui.viewmodel.GlobalSettingsViewModel
-import com.ghost.ollama.gui.ui.viewmodel.SessionViewModel
+import com.ghost.ollama.gui.viewmodel.ChatViewModel
+import com.ghost.ollama.gui.viewmodel.GlobalSettingsViewModel
+import com.ghost.ollama.gui.viewmodel.SessionViewModel
 import com.ghost.ollama.gui.utils.listOfStringAdapter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

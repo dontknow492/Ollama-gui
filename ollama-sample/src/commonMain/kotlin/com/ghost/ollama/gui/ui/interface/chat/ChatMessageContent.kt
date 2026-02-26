@@ -17,8 +17,8 @@ import com.ghost.ollama.gui.ui.components.ChatScrollbar
 import com.ghost.ollama.gui.ui.components.InputBar
 import com.ghost.ollama.gui.ui.components.InputBarState
 import com.ghost.ollama.gui.ui.components.MessageBubble
-import com.ghost.ollama.gui.ui.viewmodel.ChatEvent
-import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.viewmodel.ChatEvent
+import com.ghost.ollama.gui.viewmodel.UiChatMessage
 
 @Composable
 fun ChatContentScreen(

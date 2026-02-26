@@ -1,4 +1,4 @@
-package com.ghost.ollama.gui.ui.viewmodel
+package com.ghost.ollama.gui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

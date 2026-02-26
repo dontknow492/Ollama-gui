@@ -3,8 +3,8 @@ package com.ghost.ollama.gui.utils
 import app.cash.paging.PagingData
 import app.cash.paging.map
 import com.ghost.ollama.gui.MessageView
-import com.ghost.ollama.gui.ui.viewmodel.MessageState
-import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.viewmodel.MessageState
+import com.ghost.ollama.gui.viewmodel.UiChatMessage
 import com.ghost.ollama.models.chat.ChatResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow

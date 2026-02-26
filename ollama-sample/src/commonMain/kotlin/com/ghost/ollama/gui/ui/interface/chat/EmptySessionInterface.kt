@@ -18,7 +18,7 @@ import com.ghost.ollama.gui.models.suggestion.SuggestionCategory
 import com.ghost.ollama.gui.models.suggestion.SuggestionPrompt
 import com.ghost.ollama.gui.ui.components.InputBar
 import com.ghost.ollama.gui.ui.components.InputBarState
-import com.ghost.ollama.gui.ui.viewmodel.ChatEvent
+import com.ghost.ollama.gui.viewmodel.ChatEvent
 import ollama_kmp.ollama_sample.generated.resources.Res
 import ollama_kmp.ollama_sample.generated.resources.stars_2
 import org.jetbrains.compose.resources.painterResource

@@ -5,7 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.ghost.ollama.gui.SessionView
-import com.ghost.ollama.gui.ui.viewmodel.SessionEvent
+import com.ghost.ollama.gui.viewmodel.SessionEvent
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.vectorResource
 

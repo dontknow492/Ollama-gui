@@ -1,4 +1,4 @@
-package com.ghost.ollama.gui.ui.viewmodel
+package com.ghost.ollama.gui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -153,6 +153,10 @@ class ChatViewModel(
                         isStreaming = _isGenerating.value
                     )
             }
+
+    val installedModels = ollamaRepository
+        .observeModels()
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000))
 
 
     init {

@@ -1,4 +1,4 @@
-package com.ghost.ollama.gui.ui.viewmodel
+package com.ghost.ollama.gui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,6 +7,7 @@ import com.ghost.ollama.gui.repository.AppTheme
 import com.ghost.ollama.gui.repository.GlobalSettings
 import com.ghost.ollama.gui.repository.SettingsRepository
 import com.ghost.ollama.models.chat.ChatOptions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -172,7 +173,7 @@ class GlobalSettingsViewModel(
 
             // Auto-hide success message after 3 seconds
             viewModelScope.launch {
-                kotlinx.coroutines.delay(3000)
+                delay(3000)
                 _uiState.update { it.copy(showSuccessMessage = false) }
             }
         }

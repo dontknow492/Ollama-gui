@@ -14,8 +14,13 @@ import app.cash.paging.compose.collectAsLazyPagingItems
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.ui.components.*
 import com.ghost.ollama.gui.ui.`interface`.RenameSessionDialog
-import com.ghost.ollama.gui.ui.viewmodel.*
 import com.ghost.ollama.gui.utils.toTuneOptions
+import com.ghost.ollama.gui.viewmodel.ChatEvent
+import com.ghost.ollama.gui.viewmodel.ChatSideEffect
+import com.ghost.ollama.gui.viewmodel.ChatUiState
+import com.ghost.ollama.gui.viewmodel.ChatViewModel
+import com.ghost.ollama.gui.viewmodel.SessionEvent
+import com.ghost.ollama.gui.viewmodel.SessionViewModel
 import kotlinx.coroutines.launch
 import ollama_kmp.ollama_sample.generated.resources.Res
 import ollama_kmp.ollama_sample.generated.resources.clear_all

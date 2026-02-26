@@ -198,6 +198,29 @@ class OllamaClient(
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
 
+    fun observeModels(
+        refreshIntervalMillis: Long = 5000L
+    ): Flow<ListModelsResponse?> = flow {
+
+        while (currentCoroutineContext().isActive) {
+
+            val models = try {
+                safeApiCall {
+                    httpClient.get("$baseUrl/api/tags")
+                }
+            } catch (e: Exception) {
+                null
+            }
+
+            emit(models)
+
+            delay(refreshIntervalMillis)
+        }
+
+    }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+
 
     /**
      * Pulls a specified model from the repository.
