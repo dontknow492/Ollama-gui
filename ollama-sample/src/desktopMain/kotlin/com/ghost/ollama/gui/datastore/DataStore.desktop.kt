@@ -17,11 +17,13 @@ actual class DataStoreFactory {
                 // Windows: %APPDATA%\ollama-koin
                 System.getenv("APPDATA") + File.separator + "ollama-koin"
             }
+
             os.contains("mac") -> {
                 // macOS: ~/Library/Application Support/ollama-koin
                 System.getProperty("user.home") +
-                "/Library/Application Support/ollama-koin"
+                        "/Library/Application Support/ollama-koin"
             }
+
             else -> {
                 // Linux/Unix: ~/.config/ollama-koin
                 System.getProperty("user.home") + "/.config/ollama-koin"

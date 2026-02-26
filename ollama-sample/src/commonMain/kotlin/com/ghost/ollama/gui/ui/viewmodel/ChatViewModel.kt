@@ -6,7 +6,6 @@ import app.cash.paging.PagingData
 import com.ghost.ollama.exception.OllamaNetworkException
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.repository.OllamaRepository
-import com.ghost.ollama.gui.ui.components.TuneOptions
 import com.ghost.ollama.gui.utils.mapToUiChatMessages
 import com.ghost.ollama.models.chat.ChatResponse
 import io.github.aakira.napier.Napier

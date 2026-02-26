@@ -12,12 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cash.paging.compose.collectAsLazyPagingItems
 import com.ghost.ollama.gui.SessionView
-import com.ghost.ollama.gui.ui.components.ConfirmationDialog
-import com.ghost.ollama.gui.ui.components.InputBarState
-import com.ghost.ollama.gui.ui.components.PinButton
-import com.ghost.ollama.gui.ui.components.SessionMenu
-import com.ghost.ollama.gui.ui.components.TuneChatDialog
-import com.ghost.ollama.gui.ui.components.TuneOptions
+import com.ghost.ollama.gui.ui.components.*
 import com.ghost.ollama.gui.ui.`interface`.RenameSessionDialog
 import com.ghost.ollama.gui.ui.viewmodel.*
 import com.ghost.ollama.gui.utils.toTuneOptions
@@ -117,7 +112,7 @@ fun ChatMainContent(
 
     val chatState by viewModel.state.collectAsStateWithLifecycle()
 
-    val tuneOptions = remember(chatState.session){
+    val tuneOptions = remember(chatState.session) {
         chatState.session?.toTuneOptions()
     }
 
@@ -214,14 +209,15 @@ fun ChatMainContent(
         )
     }
 
-    if(isTuneVisible && tuneOptions != null) {
+    if (isTuneVisible && tuneOptions != null) {
         TuneChatDialog(
             initialOptions = tuneOptions,
             onDismiss = { isTuneVisible = false },
             onApply = {
                 onSessionEvent(
                     SessionEvent.UpdateSessionTuneOptions(it, session = state.session!!)
-                )}
+                )
+            }
         )
     }
 

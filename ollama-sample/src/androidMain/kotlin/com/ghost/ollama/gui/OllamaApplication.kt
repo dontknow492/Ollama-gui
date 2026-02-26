@@ -2,7 +2,6 @@ package com.ghost.ollama.gui
 
 import android.app.Application
 import com.ghost.ollama.gui.di.appModule
-import com.ghost.ollama.gui.di.platformModule
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
 import org.koin.android.ext.koin.androidContext

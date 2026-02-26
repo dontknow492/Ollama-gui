@@ -192,6 +192,7 @@ class SessionViewModel(
                     _selectedSessionIds.value = current + event.sessionId
                 }
             }
+
             is SessionEvent.UpdateSessionTuneOptions -> {
                 viewModelScope.launch {
                     try {

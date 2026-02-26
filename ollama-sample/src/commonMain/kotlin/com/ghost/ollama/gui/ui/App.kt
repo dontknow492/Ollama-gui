@@ -4,7 +4,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.gui.repository.AppTheme
 import com.ghost.ollama.gui.repository.SettingsRepository
 import com.ghost.ollama.gui.ui.`interface`.chat.ChatScreen
