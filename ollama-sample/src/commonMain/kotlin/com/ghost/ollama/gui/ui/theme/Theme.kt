@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import com.ghost.ollama.gui.repository.AppTheme
 
 private val lightColorScheme = lightColorScheme(
     primary = PrimaryLight,
@@ -112,10 +113,15 @@ private val darkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun AppTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+fun OllamaTheme(
+    themeMode: AppTheme = AppTheme.SYSTEM,
     content: @Composable() () -> Unit,
 ) {
+    val darkTheme = when (themeMode) {
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+    }
     val colorScheme = when {
         darkTheme -> darkColorScheme
         else -> lightColorScheme

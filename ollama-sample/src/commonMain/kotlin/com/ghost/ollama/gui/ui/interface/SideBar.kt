@@ -34,6 +34,8 @@ import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.models.rememberPlatformConfiguration
 import com.ghost.ollama.gui.ui.components.ChatScrollbar
 import com.ghost.ollama.gui.ui.components.ConfirmationDialog
+import com.ghost.ollama.gui.ui.components.PinButton
+import com.ghost.ollama.gui.ui.components.SessionMenu
 import com.ghost.ollama.gui.ui.viewmodel.SessionEvent
 import com.ghost.ollama.gui.ui.viewmodel.SessionSideEffect
 import com.ghost.ollama.gui.ui.viewmodel.SessionUiState
@@ -48,6 +50,7 @@ fun SideBar(
     state: SessionUiState,
     expanded: Boolean,
     onToggle: () -> Unit,
+    onSettingsClick: () -> Unit,
     onSessionClick: (String) -> Unit,
     onEvent: (SessionEvent) -> Unit,
     sideEffects: Flow<SessionSideEffect>
@@ -196,7 +199,7 @@ fun SideBar(
                 isOnline = isOnline,
                 isExpanded = expanded,
                 ollamaVersion = ollamaVersion,
-                onSettingsClick = { /* Navigate to settings */ }
+                onSettingsClick = onSettingsClick
             )
         }
 
@@ -700,17 +703,12 @@ fun SessionItem(
                     )
                 }
 
-                IconButton(
-                    onClick = { onEvent(SessionEvent.ToggleSessionPin(session.id)) },
-                ) {
-                    Icon(
-                        vectorResource(
-                            if (session.pinned) Res.drawable.keep_off else Res.drawable.keep
-                        ),
-                        contentDescription = "toggle pin",
-                        tint = if (session.pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                PinButton(
+                    pinned = session.pinned,
+                    onTogglePin = { onEvent(SessionEvent.ToggleSessionPin(session.id)) }
+                )
+
+
 
                 SessionMenu(session, isSelectionModeActive, onRename, onDeleteSession, onEvent)
             }
@@ -739,66 +737,6 @@ fun SessionItem(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SessionMenu(
-    session: SessionView,
-    isSelectionModeActive: Boolean,
-    onRename: (SessionView) -> Unit,
-    onDeleteSession: (SessionView) -> Unit,
-    onEvent: (SessionEvent) -> Unit
-) {
-    if (isSelectionModeActive) return
-
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box {
-        IconButton(onClick = { menuExpanded = true }) {
-            Icon(
-                imageVector = vectorResource(Res.drawable.more_vert),
-                contentDescription = "Session options"
-            )
-        }
-
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text("Rename") },
-                onClick = {
-                    menuExpanded = false
-                    onRename(session)
-                },
-                leadingIcon = {
-                    Icon(vectorResource(Res.drawable.edit), null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text("Export") },
-                onClick = {
-                    menuExpanded = false
-                    onEvent(SessionEvent.ExportSession(session.id))
-                },
-                leadingIcon = {
-                    Icon(vectorResource(Res.drawable.file_export), null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text("Delete") },
-                onClick = {
-                    menuExpanded = false
-                    onDeleteSession(session)
-                },
-                leadingIcon = {
-                    Icon(vectorResource(Res.drawable.delete_forever), null)
-                }
-            )
         }
     }
 }

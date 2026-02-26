@@ -3,9 +3,11 @@ package com.ghost.ollama.gui.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.cash.paging.PagingData
+import com.ghost.ollama.exception.OllamaNetworkException
+import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.repository.OllamaRepository
+import com.ghost.ollama.gui.ui.components.TuneOptions
 import com.ghost.ollama.gui.utils.mapToUiChatMessages
-import com.ghost.ollama.models.chat.ChatOptions
 import com.ghost.ollama.models.chat.ChatResponse
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.*
@@ -49,15 +51,26 @@ data class UiChatMessage(
 // --- STATE & SIDE EFFECTS ---
 
 data class ChatUiState(
-    val messages: PagingData<UiChatMessage> = PagingData.empty(), // Using PagingData for efficient loading of large chat histories
-    val title: String = "New Chat", // Optional session title
-    val options: ChatOptions = ChatOptions(temperature = 0.7f), // Default options
+    val session: SessionView? = null,
     val isGenerating: Boolean = false // Overall chat lock state
 )
 
 sealed class ChatSideEffect {
     data class CopyToClipboard(val text: String) : ChatSideEffect()
     data class ShowToast(val message: String) : ChatSideEffect()
+}
+
+
+sealed interface ChatEvent {
+    data class SessionSelected(val sessionId: String) : ChatEvent
+    data class SendMessage(val content: String, val model: String = "qwen3:4b", val images: List<String>? = null) :
+        ChatEvent
+
+    object StopGeneration : ChatEvent
+    data class DeleteMessage(val messageId: String) : ChatEvent
+    data class CopyMessage(val messageId: String) : ChatEvent
+    object ClearChat : ChatEvent
+    object RetryLastMessage : ChatEvent
 }
 
 // --- VIEW MODEL ---
@@ -74,67 +87,82 @@ class ChatViewModel(
     // -------------------------------------------------------------------------
     // Session and options
     // -------------------------------------------------------------------------
-    private val sessionId = MutableStateFlow(generateSessionId())
-    private val chatOptions = MutableStateFlow(ChatOptions(temperature = 0.7f))
+//    private val sessionId = MutableStateFlow(generateSessionId())
+    // Which session is active
+    private val currentSessionId = MutableStateFlow<String?>(null)
 
-    // -------------------------------------------------------------------------
-    // UI state
-    // -------------------------------------------------------------------------
-    private val _state = MutableStateFlow(ChatUiState())
-    val state: StateFlow<ChatUiState> = _state.asStateFlow()
-
-    private val _effect = MutableSharedFlow<ChatSideEffect>()
-    val effect: SharedFlow<ChatSideEffect> = _effect.asSharedFlow()
+    // Reactive session
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val session: StateFlow<SessionView?> =
+        currentSessionId
+            .flatMapLatest { id ->
+                id?.let {
+                    ollamaRepository.getSessionById(it)
+                } ?: ollamaRepository.getOrCreateActiveSession()
+            }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                null
+            )
 
     // Generation state
     private var currentStreamingJob: Job? = null
     private val _isGenerating = MutableStateFlow(false)
-    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
+    // -------------------------------------------------------------------------
+    // UI state
+    // -------------------------------------------------------------------------
+
+    val state: StateFlow<ChatUiState> =
+        combine(
+            session,
+            _isGenerating
+        ) { session, isGenerating ->
+            ChatUiState(
+                session = session,
+                isGenerating = isGenerating
+            )
+        }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = ChatUiState()
+            )
+
+    private val _effect = MutableSharedFlow<ChatSideEffect>()
+    val effect: SharedFlow<ChatSideEffect> = _effect.asSharedFlow()
+
 
     // -------------------------------------------------------------------------
     // Messages flow (paged)
     // -------------------------------------------------------------------------
     @OptIn(ExperimentalCoroutinesApi::class)
-    val messages: Flow<PagingData<UiChatMessage>> = sessionId
-        .flatMapLatest { currentId ->
-            Napier.d(tag = "ChatViewModel", message = "Switching to session: $currentId")
-            ollamaRepository.getMessagesPaged(currentId).mapToUiChatMessages(
-                sessionId = currentId,
-                isStreaming = _isGenerating.value
-            )
+    val messages: Flow<PagingData<UiChatMessage>> =
+        session
+            .filterNotNull()
+            .flatMapLatest { current ->
+                Napier.d(
+                    tag = "ChatViewModel",
+                    message = "Switching to session: ${current.id}-${current.title}"
+                )
 
-        }
+                ollamaRepository
+                    .getMessagesPaged(current.id)
+                    .mapToUiChatMessages(
+                        sessionId = current.id,
+                        isStreaming = _isGenerating.value
+                    )
+            }
+
 
     init {
-        Napier.d(tag = "ChatViewModel", message = "ViewModel initialized with sessionId: ${sessionId.value}")
-        observeSessionTitle()
-        collectMessages() // optional: if you want to update state with paging data
-    }
+        Napier.d(tag = "ChatViewModel", message = "ViewModel initialized with sessionId: ${currentSessionId}")
 
-    /**
-     * Collects messages and updates the state's messages field.
-     * This is optional if you want to keep the messages inside ChatUiState.
-     * Alternatively, the UI can collect `messages` directly.
-     */
-    private fun collectMessages() {
         viewModelScope.launch {
-            messages.collectLatest { pagingData ->
-                _state.update { it.copy(messages = pagingData) }
-            }
-        }
-    }
+            val initial = ollamaRepository.getOrCreateActiveSession().first()
+            currentSessionId.value = initial.id
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun observeSessionTitle() {
-        viewModelScope.launch {
-            sessionId
-                .flatMapLatest { currentId ->
-                    ollamaRepository.getSessionById(currentId)
-                }
-                .collectLatest { session ->
-                    _state.update { it.copy(title = session?.title ?: "New Chat") }
-                    Napier.d(tag = "ChatViewModel", message = "Session title updated: ${session?.title}")
-                }
         }
     }
 
@@ -142,18 +170,45 @@ class ChatViewModel(
     // Public actions
     // -------------------------------------------------------------------------
 
+    fun onEvent(event: ChatEvent) {
+        when (event) {
+            is ChatEvent.SessionSelected -> setCurrentSession(event.sessionId)
+            is ChatEvent.SendMessage -> sendMessage(event.content, event.model, event.images)
+            ChatEvent.StopGeneration -> stopGeneration()
+            is ChatEvent.DeleteMessage -> deleteMessage(event.messageId)
+            is ChatEvent.CopyMessage -> copyMessage(event.messageId)
+            ChatEvent.ClearChat -> clearChat()
+            ChatEvent.RetryLastMessage -> retryLastMessage()
+        }
+    }
+
     /**
      * Switch to a different chat session.
      */
-    fun setCurrentSession(newSessionId: String) {
-        Napier.d(tag = "ChatViewModel", message = "Switching session from ${sessionId.value} to $newSessionId")
-        sessionId.value = newSessionId
+    private fun setCurrentSession(newSessionId: String) {
+        Napier.i(tag = "ChatViewModel", message = "Setting current Session ID: $newSessionId")
+        viewModelScope.launch {
+            cancelCurrentGeneration()
+            val exists = ollamaRepository.sessionExists(sessionId = newSessionId)
+            if (!exists) {
+                Napier.w(
+                    tag = "ChatViewModel",
+                    message = "Session not found: $newSessionId, creating new one"
+                )
+            } else {
+                Napier.d(
+                    tag = "ChatViewModel",
+                    message = "Switching to existing session: $newSessionId"
+                )
+                currentSessionId.value = newSessionId
+            }
+        }
     }
 
     /**
      * Send a new user message and start streaming the assistant's response.
      */
-    fun sendMessage(content: String, model: String = "qwen3:4b", images: List<String>? = null) {
+    private fun sendMessage(content: String, model: String = "qwen3:4b", images: List<String>? = null) {
         if (_isGenerating.value) {
             Napier.w(tag = "ChatViewModel", message = "sendMessage ignored: already generating")
             return
@@ -168,27 +223,29 @@ class ChatViewModel(
         cancelCurrentGeneration() // ensure no stale job
 
         currentStreamingJob = viewModelScope.launch(ioDispatcher) {
+            val activeSession = session.value ?: return@launch
+
             _isGenerating.value = true
-            _state.update { it.copy(isGenerating = true) }
 
             try {
                 ollamaRepository.sendChatMessageStreaming(
-                    sessionId = sessionId.value,
+                    sessionId = activeSession.id,
                     modelName = model,
                     content = content,
                     role = MessageRole.USER
                 ).collect { response ->
                     handleStreamResponse(response)
                 }
+            } catch (e: OllamaNetworkException) {
+                Napier.e(tag = "ChatViewModel", message = "Network error during generation", throwable = e)
+                handleError(Exception("Network error: ${e.message}"))
             } catch (e: CancellationException) {
                 handleCancellation()
             } catch (e: Exception) {
                 handleError(e)
             } finally {
                 _isGenerating.value = false
-                _state.update { it.copy(isGenerating = false) }
                 currentStreamingJob = null
-                Napier.d(tag = "ChatViewModel", message = "Streaming finished (finally)")
             }
         }
     }
@@ -196,7 +253,7 @@ class ChatViewModel(
     /**
      * Stop the ongoing generation.
      */
-    fun stopGeneration() {
+    private fun stopGeneration() {
         Napier.d(tag = "ChatViewModel", message = "stopGeneration called")
         cancelCurrentGeneration()
     }
@@ -204,7 +261,7 @@ class ChatViewModel(
     /**
      * Delete a specific message.
      */
-    fun deleteMessage(messageId: String) {
+    private fun deleteMessage(messageId: String) {
         Napier.d(tag = "ChatViewModel", message = "deleteMessage: $messageId")
         viewModelScope.launch(ioDispatcher) {
             try {
@@ -218,7 +275,7 @@ class ChatViewModel(
     /**
      * Copy message content to clipboard.
      */
-    fun copyMessage(messageId: String) {
+    private fun copyMessage(messageId: String) {
         viewModelScope.launch(ioDispatcher) {
             try {
                 val message = ollamaRepository.getMessageById(messageId)
@@ -236,38 +293,30 @@ class ChatViewModel(
     }
 
     /**
-     * Update chat options (temperature, model, etc.)
-     */
-    fun updateOptions(newOptions: ChatOptions) {
-        Napier.d(tag = "ChatViewModel", message = "updateOptions: $newOptions")
-        chatOptions.value = newOptions
-        _state.update { it.copy(options = newOptions) }
-    }
-
-    /**
      * Clear the current chat (starts a new session).
      */
-    fun clearChat() {
-        Napier.d(tag = "ChatViewModel", message = "clearChat")
-        viewModelScope.launch {
-            cancelCurrentGeneration()
-            sessionId.value = generateSessionId()
-            _state.update {
-                it.copy(
-                    messages = PagingData.empty(), // reset paging data
-                    isGenerating = false
-                )
+    private fun clearChat() {
+        if (currentSessionId.value != null) {
+            Napier.d(tag = "ChatViewModel", message = "clearChat: clearing session ${currentSessionId.value}")
+            viewModelScope.launch {
+                cancelCurrentGeneration()
+                if (currentSessionId.value == null) return@launch
+                ollamaRepository.clearSession(sessionId = currentSessionId.value!!)
+                _effect.emit(ChatSideEffect.ShowToast("Chat cleared"))
             }
-            _effect.emit(ChatSideEffect.ShowToast("Chat cleared"))
+        } else {
+            Napier.w(tag = "ChatViewModel", message = "clearChat: no active session to clear")
         }
+
     }
 
     /**
      * Retry the last user message.
      */
-    fun retryLastMessage() {
+    private fun retryLastMessage() {
         viewModelScope.launch(ioDispatcher) {
-            val lastUser = ollamaRepository.getLastUserMessage(sessionId.value)
+            val activeSession = session.value ?: return@launch
+            val lastUser = ollamaRepository.getLastUserMessage(activeSession.id)
             if (lastUser != null) {
                 Napier.d(tag = "ChatViewModel", message = "retryLastMessage: resending '${lastUser.content}'")
                 withContext(Dispatchers.Main) {
@@ -290,7 +339,6 @@ class ChatViewModel(
         currentStreamingJob?.cancel(CancellationException("Generation stopped by user"))
         currentStreamingJob = null
         _isGenerating.value = false
-        _state.update { it.copy(isGenerating = false) }
     }
 
     private suspend fun handleStreamResponse(response: ChatResponse) {
@@ -307,27 +355,78 @@ class ChatViewModel(
     }
 
     private suspend fun handleCancellation() {
+        Napier.i(
+            tag = "ChatViewModel",
+            message = "Stream cancelled by user"
+        )
+
         withContext(Dispatchers.Main) {
-            _effect.emit(ChatSideEffect.ShowToast("Generation stopped"))
+            _effect.emit(
+                ChatSideEffect.ShowToast(
+                    "Generation stopped. Partial response saved."
+                )
+            )
         }
-        Napier.i(tag = "ChatViewModel", message = "Stream cancelled by user")
-        // Optionally mark the last assistant message as errored
-        markLastAssistantAsErrored("Stopped by user")
+
+        markLastAssistantAsErrored("Generation stopped by user")
     }
 
     private suspend fun handleError(e: Exception) {
-        Napier.e(tag = "ChatViewModel", message = "Stream error", throwable = e)
+        Napier.e(
+            tag = "ChatViewModel",
+            message = "Stream error",
+            throwable = e
+        )
+
+        val userMessage = mapToUserFriendlyMessage(e)
+
         withContext(Dispatchers.Main) {
-            _effect.emit(ChatSideEffect.ShowToast("Error: ${e.message}"))
+            _effect.emit(ChatSideEffect.ShowToast(userMessage))
         }
-        markLastAssistantAsErrored(e.message ?: "Unknown error")
+
+        markLastAssistantAsErrored(userMessage)
+    }
+
+    private fun mapToUserFriendlyMessage(e: Exception): String {
+        return when (e) {
+            is OllamaNetworkException -> {
+                if (e.message?.contains("Connection refused") == true) {
+                    "Unable to connect to Ollama.\nMake sure the Ollama server is running on localhost:11434."
+                } else {
+                    "Network error while contacting Ollama."
+                }
+            }
+
+            is CancellationException -> {
+                "Request was cancelled."
+            }
+
+            else -> {
+                "Something went wrong while generating the response."
+            }
+        }
     }
 
     private suspend fun markLastAssistantAsErrored(errorText: String) {
         withContext(ioDispatcher) {
-            val lastMsg = ollamaRepository.getLastUserMessage(sessionId.value)
-            if (lastMsg != null && lastMsg.role == MessageRole.ASSISTANT && lastMsg.state != MessageState.Done) {
-                ollamaRepository.updateMessageError(messageId = lastMsg.id, isError = true, error = errorText)
+            val activeSession = session.value ?: return@withContext
+
+            Napier.d(
+                tag = "ChatViewModel",
+                message = "Marking last assistant message as error in session=${activeSession.id} : $errorText"
+            )
+
+            val lastMsg = ollamaRepository.getLastUserMessage(activeSession.id)
+
+            if (lastMsg != null &&
+                lastMsg.role == MessageRole.ASSISTANT &&
+                lastMsg.state != MessageState.Done
+            ) {
+                ollamaRepository.updateMessageError(
+                    messageId = lastMsg.id,
+                    isError = true,
+                    error = errorText
+                )
             }
         }
     }

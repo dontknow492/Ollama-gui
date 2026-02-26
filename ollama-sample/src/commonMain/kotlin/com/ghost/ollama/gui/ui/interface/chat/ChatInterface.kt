@@ -11,16 +11,20 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cash.paging.compose.collectAsLazyPagingItems
+import com.ghost.ollama.gui.SessionView
+import com.ghost.ollama.gui.ui.components.ConfirmationDialog
 import com.ghost.ollama.gui.ui.components.InputBarState
-import com.ghost.ollama.gui.ui.viewmodel.ChatSideEffect
-import com.ghost.ollama.gui.ui.viewmodel.ChatUiState
-import com.ghost.ollama.gui.ui.viewmodel.ChatViewModel
-import com.ghost.ollama.gui.ui.viewmodel.SessionViewModel
+import com.ghost.ollama.gui.ui.components.PinButton
+import com.ghost.ollama.gui.ui.components.SessionMenu
+import com.ghost.ollama.gui.ui.components.TuneChatDialog
+import com.ghost.ollama.gui.ui.components.TuneOptions
+import com.ghost.ollama.gui.ui.`interface`.RenameSessionDialog
+import com.ghost.ollama.gui.ui.viewmodel.*
+import com.ghost.ollama.gui.utils.toTuneOptions
 import kotlinx.coroutines.launch
 import ollama_kmp.ollama_sample.generated.resources.Res
-import ollama_kmp.ollama_sample.generated.resources.face
-import ollama_kmp.ollama_sample.generated.resources.file_export
-import ollama_kmp.ollama_sample.generated.resources.more_vert
+import ollama_kmp.ollama_sample.generated.resources.clear_all
+import ollama_kmp.ollama_sample.generated.resources.left_panel_open
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -34,8 +38,6 @@ fun ChatScreen(
     // 1. Observe the UI State
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sessionState by sessionViewModel.uiState.collectAsStateWithLifecycle()
-
-    //
 
     // Multiplatform contexts for side effects
     val clipboardManager = LocalClipboardManager.current
@@ -77,7 +79,7 @@ fun ChatScreen(
                 snackbarHostState = snackbarHostState,
                 onEvent = sessionViewModel::onEvent,
                 sideEffects = sessionViewModel.sideEffects,
-                onSessionClick = viewModel::setCurrentSession
+                onChatEvent = viewModel::onEvent
             )
         } else {
             DesktopChatScreen(
@@ -87,10 +89,12 @@ fun ChatScreen(
                 snackbarHostState = snackbarHostState,
                 onEvent = sessionViewModel::onEvent,
                 sideEffects = sessionViewModel.sideEffects,
-                onSessionClick = viewModel::setCurrentSession
+                onChatEvent = viewModel::onEvent
             )
         }
     }
+
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,10 +105,21 @@ fun ChatMainContent(
     snackbarHostState: SnackbarHostState,
     isMobile: Boolean,
     onMenuClick: () -> Unit,
+    onChatEvent: (ChatEvent) -> Unit,
+    onSessionEvent: (SessionEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var renameSession by remember { mutableStateOf<SessionView?>(null) }
+    var deleteSession by remember { mutableStateOf<SessionView?>(null) }
 //    var messages = state.messages
     var inputBarState by remember { mutableStateOf(InputBarState()) }
+    var isTuneVisible by remember { mutableStateOf(false) }
+
+    val chatState by viewModel.state.collectAsStateWithLifecycle()
+
+    val tuneOptions = remember(chatState.session){
+        chatState.session?.toTuneOptions()
+    }
 
     val messages = viewModel.messages.collectAsLazyPagingItems()
 
@@ -116,14 +131,33 @@ fun ChatMainContent(
 
 
 
-    Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbarHostState) }, topBar = {
-        ChatTopBar(
-            appTitle = "Ollama",
-            chatTitle = state.title,
-            onExportClick = {},
-            onMoreClick = {},
-            onProfileClick = {})
-    }) { paddingValues ->
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            ChatTopBar(
+                appTitle = "Ollama",
+                session = state.session,
+                onClearChat = { onChatEvent(ChatEvent.ClearChat) },
+                onRename = { renameSession = it },
+                onDeleteSession = { deleteSession = it },
+                onEvent = onSessionEvent
+            )
+        },
+        floatingActionButton = {
+            if (isMobile) {
+                FloatingActionButton(
+                    onClick = onMenuClick,
+                ) {
+                    Icon(
+                        painter = painterResource(Res.drawable.left_panel_open),
+                        contentDescription = "Menu"
+                    )
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.Start
+    ) { paddingValues ->
 
         when (messages.itemCount == 0) {
             true -> EmptySessionScreen(
@@ -133,42 +167,78 @@ fun ChatMainContent(
                 onInputChanged = {
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
-                onSendClick = {
-                    viewModel.sendMessage(it)
-                    inputBarState = inputBarState.copy(inputText = "")
-                },
+                onChatEvent = onChatEvent,
                 onSuggestionClick = {
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
-                onStopClick = {})
+                onToolsClick = { isTuneVisible = true }
+            )
 
             false -> ChatContentScreen(
                 modifier = Modifier.padding(paddingValues),
                 messages = messages,
                 inputBarState = inputBarState,
                 isMobile = isMobile,
-                onMenuClick = onMenuClick,
                 onInputChange = {
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
-                onSendClick = {
-                    viewModel.sendMessage(it)
-                    inputBarState = inputBarState.copy(inputText = "")
-                },
-                onCopyMessage = viewModel::copyMessage,
-                onDeleteMessage = viewModel::deleteMessage,
-
-                )
+                onChatEvent = onChatEvent,
+                onToolsClicked = { isTuneVisible = true }
+            )
         }
     }
+
+    if (renameSession != null) {
+        RenameSessionDialog(
+            session = renameSession!!,
+            onDismiss = { renameSession = null },
+            onConfirm = { newTitle ->
+                onSessionEvent(SessionEvent.RenameSession(renameSession!!.id, newTitle))
+                renameSession = null
+            }
+        )
+    }
+
+    if (deleteSession != null) {
+        ConfirmationDialog(
+            title = "Delete Session",
+            message = "Are you sure you want to delete the session \"${deleteSession!!.title}\"? This action cannot be undone.",
+            confirmText = "Delete",
+            dismissText = "Cancel",
+            isDestructive = true,
+            onConfirm = {
+                onSessionEvent(SessionEvent.DeleteSession(deleteSession!!.id))
+                deleteSession = null
+            },
+            onDismiss = { deleteSession = null }
+        )
+    }
+
+    if(isTuneVisible && tuneOptions != null) {
+        TuneChatDialog(
+            initialOptions = tuneOptions,
+            onDismiss = { isTuneVisible = false },
+            onApply = {
+                onSessionEvent(
+                    SessionEvent.UpdateSessionTuneOptions(it, session = state.session!!)
+                )}
+        )
+    }
+
 }
 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatTopBar(
-    appTitle: String, chatTitle: String, onExportClick: () -> Unit, onMoreClick: () -> Unit, onProfileClick: () -> Unit
+    appTitle: String,
+    session: SessionView?,
+    onClearChat: (SessionView) -> Unit,
+    onRename: (SessionView) -> Unit,
+    onDeleteSession: (SessionView) -> Unit,
+    onEvent: (SessionEvent) -> Unit
 ) {
+    var isMenuVisible by remember { mutableStateOf(false) }
     TopAppBar(title = {
         Box(
             modifier = Modifier.fillMaxWidth()
@@ -176,7 +246,7 @@ private fun ChatTopBar(
 
             // Center Title (Chat Title)
             Text(
-                text = chatTitle.ifBlank { "New Chat" },
+                text = session?.title ?: "New Chat",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.Center)
             )
@@ -192,33 +262,48 @@ private fun ChatTopBar(
     }, actions = {
 
         // Export Button
-        IconButton(onClick = onExportClick) {
-            Icon(
-                painter = painterResource(Res.drawable.file_export), contentDescription = "Export"
-            )
-        }
+        PinButton(
+            pinned = session?.pinned ?: false,
+            onTogglePin = {
+                if (session == null) return@PinButton
+                onEvent(SessionEvent.ToggleSessionPin(session.id))
+            }
+        )
 
         // More Button
-        IconButton(onClick = onMoreClick) {
-            Icon(
-                painter = painterResource(Res.drawable.more_vert), contentDescription = "More"
+        if (session != null) {
+            SessionMenu(
+                session = session,
+                isSelectionModeActive = false,
+                onRename = {
+                    isMenuVisible = false
+                    onRename(session)
+                },
+                onDeleteSession = {
+                    isMenuVisible = false
+                    onDeleteSession(session)
+                },
+                onEvent = onEvent
             )
         }
 
         // User Avatar
-        IconButton(onClick = onProfileClick) {
-            Surface(
-                shape = CircleShape, tonalElevation = 2.dp, modifier = Modifier.size(32.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(Res.drawable.face),
-                        contentDescription = "Profile",
-                        modifier = Modifier.size(18.dp)
-                    )
+        if (session != null) {
+            IconButton(onClick = { onClearChat(session) }) {
+                Surface(
+                    shape = CircleShape, tonalElevation = 2.dp, modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(Res.drawable.clear_all),
+                            contentDescription = "Clear Chat",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
+
     })
 }
 

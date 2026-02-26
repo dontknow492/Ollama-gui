@@ -17,6 +17,7 @@ import com.ghost.ollama.gui.ui.components.ChatScrollbar
 import com.ghost.ollama.gui.ui.components.InputBar
 import com.ghost.ollama.gui.ui.components.InputBarState
 import com.ghost.ollama.gui.ui.components.MessageBubble
+import com.ghost.ollama.gui.ui.viewmodel.ChatEvent
 import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
 
 @Composable
@@ -24,11 +25,9 @@ fun ChatContentScreen(
     messages: LazyPagingItems<UiChatMessage>,
     inputBarState: InputBarState,
     isMobile: Boolean,
-    onMenuClick: () -> Unit,
-    onSendClick: (String) -> Unit,
     onInputChange: (String) -> Unit,
-    onCopyMessage: (String) -> Unit,
-    onDeleteMessage: (String) -> Unit,
+    onChatEvent: (ChatEvent) -> Unit,
+    onToolsClicked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -64,8 +63,8 @@ fun ChatContentScreen(
                 messageItem?.let { message ->
                     MessageBubble(
                         message = message,
-                        onCopy = { onCopyMessage(message.id) },
-                        onDelete = { onDeleteMessage(message.id) },
+                        onCopy = { onChatEvent(ChatEvent.CopyMessage(message.id)) },
+                        onDelete = { onChatEvent(ChatEvent.DeleteMessage(message.id)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -95,11 +94,11 @@ fun ChatContentScreen(
                 ).widthIn(max = 800.dp),
                 state = inputBarState,
                 onInputChanged = onInputChange,
-                onSendClick = onSendClick,
+                onSendClick = { onChatEvent(ChatEvent.SendMessage(inputBarState.inputText)) },
                 onAddClick = {},
-                onToolsClick = {},
+                onToolsClick = onToolsClicked,
                 onMicClick = {},
-                onStopClick = {},
+                onStopClick = { onChatEvent(ChatEvent.StopGeneration) },
                 onModelClick = { },
             )
         }

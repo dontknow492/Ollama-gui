@@ -17,16 +17,15 @@ import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
 import com.ghost.ollama.gui.utils.toUiChatMessage
 import com.ghost.ollama.models.chat.ChatMessage
+import com.ghost.ollama.models.chat.ChatOptions
 import com.ghost.ollama.models.chat.ChatResponse
 import com.ghost.ollama.models.generate.GenerateResponse
 import com.ghost.ollama.models.modelMGMT.tags.ListModelsResponse
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 
@@ -38,6 +37,7 @@ class OllamaRepository(
 ) {
 
     suspend fun ollamaVersion(): String {
+        ChatOptions
         return ollamaClient.ollamaVersion().version
     }
 
@@ -60,7 +60,7 @@ class OllamaRepository(
     /**
      * Creates a new session.
      */
-    fun createOrReuseSession(title: String, sessionType: String = "CHAT"): String {
+    suspend fun createOrReuseSession(title: String = "New Chat", sessionType: String = "CHAT"): String {
         val latestSession = entityQueries.getLatestSession().executeAsOneOrNull()
 
         if (latestSession != null) {
@@ -89,6 +89,69 @@ class OllamaRepository(
 
         return sessionId
     }
+
+
+    fun getLastUsedSession(): Flow<SessionView?> {
+        return entityQueries
+            .getLastUsedSession()
+            .asFlow()
+            .mapToOneOrNull(ioDispatcher)
+    }
+
+    fun sessionExists(sessionId: String): Boolean {
+        return entityQueries.sessionExists(sessionId).executeAsOne()
+    }
+
+    fun clearSession(sessionId: String) {
+        entityQueries.clearSession(sessionId)
+    }
+
+    fun updateSession(session: SessionView) {
+        entityQueries.updateSession(
+            title = session.title,
+            pinned = session.pinned,
+            updatedAt = currentTimeMillis(),
+            seed = session.seed,
+            temperature = session.temperature,
+            topK = session.topK,
+            topP = session.topP,
+            minP = session.minP,
+            stop = session.stop,
+            numCtx = session.numCtx,
+            numPredict = session.numPredict,
+            format = session.format,
+            id = session.id
+        )
+    }
+
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getOrCreateActiveSession(
+        defaultTitle: String = "New Chat",
+        sessionType: String = "CHAT"
+    ): Flow<SessionView> {
+
+        return entityQueries
+            .getLastUsedSession()
+            .asFlow()
+            .mapToOneOrNull(ioDispatcher)
+            .flatMapLatest { session ->
+
+                if (session != null) {
+                    flowOf(session)
+                } else {
+                    flow {
+                        val newId = createOrReuseSession(defaultTitle, sessionType)
+                        val newSession = entityQueries
+                            .getSessionById(newId)
+                            .executeAsOne()
+
+                        emit(newSession)
+                    }
+                }
+            }
+    }
+
 
     fun toggleSessionPin(sessionId: String) {
         entityQueries.toggleSessionPin(currentTimeMillis(), sessionId)
@@ -431,6 +494,10 @@ class OllamaRepository(
         // Implement based on your data layer
         return entityQueries.getLastMessageOfSessionId(sessionId).executeAsOneOrNull()?.toUiChatMessage(sessionId)
 
+    }
+
+    fun getLastMessage(): MessageView? {
+        return entityQueries.getLastMessage().executeAsOneOrNull()
     }
 
 

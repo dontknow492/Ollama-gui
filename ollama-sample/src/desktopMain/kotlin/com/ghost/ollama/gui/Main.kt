@@ -7,7 +7,6 @@ import com.ghost.ollama.createHttpClient
 import com.ghost.ollama.enum.ResponseFormat
 import com.ghost.ollama.exception.OllamaException
 import com.ghost.ollama.gui.di.appModule
-import com.ghost.ollama.gui.di.platformModule
 import com.ghost.ollama.gui.ui.App
 import com.ghost.ollama.models.chat.ChatOptions
 import io.github.aakira.napier.DebugAntilog
@@ -18,10 +17,7 @@ import org.koin.core.context.startKoin
 fun main() = application {
 
     startKoin {
-        modules(
-            platformModule,  // 👈 IMPORTANT
-            appModule,
-        )
+        modules(appModule)
     }
     Napier.base(DebugAntilog())
 

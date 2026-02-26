@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,10 +20,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.ghost.ollama.gui.ui.theme.AppTheme
+import com.ghost.ollama.gui.repository.AppTheme
+import com.ghost.ollama.gui.ui.theme.OllamaTheme
 import com.ghost.ollama.gui.ui.viewmodel.MessageState
 import com.ghost.ollama.gui.ui.viewmodel.UiChatMessage
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
 import com.mikepenz.markdown.m3.Markdown
+import dev.snipme.highlights.Highlights
+import dev.snipme.highlights.model.SyntaxThemes
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import java.text.SimpleDateFormat
@@ -270,38 +277,114 @@ fun AssistantMessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: UiChatMessage) {
+private fun MessageContent(
+    message: UiChatMessage,
+    onRetry: (() -> Unit)? = null
+) {
     when (val state = message.state) {
 
         is MessageState.Loading -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Loading...")
+                Text(
+                    "Thinking…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
         is MessageState.Generating -> {
-            Markdown(
-                content = message.content ?: "",
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column {
+                Markdown(
+                    content = message.content.orEmpty(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Generating…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
 
         is MessageState.Errored -> {
-            Text(
-                "Error: ${state.error}",
-                color = MaterialTheme.colorScheme.error
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = "Something went wrong",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    text = state.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (onRetry != null) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = onRetry) {
+                        Text("Retry")
+                    }
+                }
+            }
         }
 
         else -> {
+            // ADVANCED: Customize Highlights library by defining different theme
+            val isDarkTheme = isSystemInDarkTheme()
+
+            val highlights = remember(isDarkTheme) {
+                Highlights.Builder()
+                    .theme(SyntaxThemes.atom(darkMode = isDarkTheme))
+            }
+
             Markdown(
-                content = message.content ?: "(Empty)",
-                modifier = Modifier.fillMaxWidth()
+                content = message.content?.takeIf { it.isNotBlank() }
+                    ?: "_No content_",
+                modifier = Modifier.fillMaxWidth(),
+                components = markdownComponents(
+                    codeBlock = {
+                        MarkdownHighlightedCodeBlock(
+                            content = it.content,
+                            node = it.node,
+                            highlightsBuilder = highlights,
+                            showHeader = true
+                        )
+                    },
+                    codeFence = {
+                        MarkdownHighlightedCodeFence(
+                            content = it.content,
+                            node = it.node,
+                            highlightsBuilder = highlights,
+                            showHeader = true
+                        )
+                    },
+                )
             )
         }
     }
@@ -717,7 +800,7 @@ fun ThemedMessageBubblePreview() {
 @Composable
 @Preview()
 fun DarkThemedMessageBubblePreview() {
-    AppTheme(true) {
+    OllamaTheme(AppTheme.SYSTEM) {
         MessageBubblePreview()
     }
 }

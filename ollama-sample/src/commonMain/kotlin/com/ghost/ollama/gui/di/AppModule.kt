@@ -5,20 +5,31 @@ import com.ghost.ollama.createHttpClient
 import com.ghost.ollama.gui.Message
 import com.ghost.ollama.gui.OllamaDatabase
 import com.ghost.ollama.gui.repository.OllamaRepository
+import com.ghost.ollama.gui.repository.SettingsRepository
 import com.ghost.ollama.gui.ui.viewmodel.ChatViewModel
+import com.ghost.ollama.gui.ui.viewmodel.GlobalSettingsViewModel
 import com.ghost.ollama.gui.ui.viewmodel.SessionViewModel
 import com.ghost.ollama.gui.utils.listOfStringAdapter
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
 
-val appModule = module {
+val applicationScope = CoroutineScope(
+    SupervisorJob() + Dispatchers.IO
+)
 
+// Platform-specific module (expect/actual)
+expect val platformModule: Module
+
+// Database module
+val databaseModule = module {
     single {
         OllamaDatabase(
-            driver = get(),
+            driver = get(), // SQLDriver from platform module
             MessageAdapter = Message.Adapter(
                 imagesAdapter = listOfStringAdapter
             )
@@ -26,17 +37,18 @@ val appModule = module {
     }
 
     single { get<OllamaDatabase>().entityQueries }
+}
 
-    // HTTP Client
-    single {
-        createHttpClient() // Make sure this function is in scope
-    }
+// Network module
+val networkModule = module {
+    single { createHttpClient() }
+    single { OllamaClient(httpClient = get()) }
+}
 
-    single {
-        OllamaClient(
-            httpClient = createHttpClient()
-        )
-    }
+// Repository module
+val repositoryModule = module {
+    single<CoroutineDispatcher> { Dispatchers.IO }
+
     factory {
         OllamaRepository(
             ollamaClient = get(),
@@ -45,25 +57,32 @@ val appModule = module {
         )
     }
 
-    factory { params ->
-        ChatViewModel(
-            ollamaRepository = get()  // Make sure parameter name matches constructor
-        )
-    }
-
-    factory { params ->
-        SessionViewModel(
-            repository = get()  // Or whatever parameter name your SessionViewModel uses
-        )
-    }
-
-    // Dispatcher
-
-    factory {
-        SessionViewModel(get())
-    }
-
-    single<CoroutineDispatcher> { Dispatchers.IO }
+    single { SettingsRepository(get(), applicationScope) } // DataStore from platform module
 }
 
-expect val platformModule: Module
+// ViewModel module
+val viewModelModule = module {
+    factory { params ->
+        ChatViewModel(
+            ollamaRepository = get(),
+            ioDispatcher = get()
+        )
+    }
+
+    factory { SessionViewModel(get()) }
+
+    factory { GlobalSettingsViewModel(get()) }
+
+
+}
+
+// Combine all modules
+val appModule = module {
+    includes(
+        platformModule,      // Platform-specific (SQLDriver, DataStore)
+        databaseModule,      // Database setup
+        networkModule,       // HTTP client and API
+        repositoryModule,    // Repositories
+        viewModelModule      // ViewModels
+    )
+}

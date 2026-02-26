@@ -11,7 +11,18 @@ CREATE TABLE Session (
     pinned INTEGER AS Boolean DEFAULT 0 NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    session_type TEXT NOT NULL
+    session_type TEXT NOT NULL,
+
+    -- Chat Options
+    seed INTEGER,
+    temperature REAL,
+    top_k INTEGER,
+    top_p REAL,
+    min_p REAL,
+    stop TEXT,
+    num_ctx INTEGER,
+    num_predict INTEGER,
+    format TEXT
 );
 
 CREATE INDEX idx_session_updated_at ON Session(updated_at DESC);
@@ -23,7 +34,19 @@ SELECT
     pinned,
     created_at AS createdAt,
     updated_at AS updatedAt,
-    session_type AS sessionType
+    session_type AS sessionType,
+
+    -- Chat Options
+    seed,
+    temperature,
+    top_k AS topK,
+    top_p AS topP,
+    min_p AS minP,
+    stop,
+    num_ctx AS numCtx,
+    num_predict AS numPredict,
+    format
+
 FROM Session;
 
 -- ==========================================
@@ -113,11 +136,34 @@ WHERE id = :id;
 deleteSession:
 DELETE FROM Session WHERE id = :id;
 
+sessionExists:
+SELECT EXISTS(SELECT 1 FROM Session WHERE id = :id);
+
+clearSession:
+DELETE FROM Message
+WHERE session_id = :sessionId;
+
 -- Returns the total number of sessions (required for Paging3 to calculate total pages)
 countSessions:
 SELECT count(*) FROM Session;
 
 
+updateSession:
+UPDATE Session
+SET
+    title = :title,
+    pinned = :pinned,
+    seed = :seed,
+    temperature = :temperature,
+    top_k = :topK,
+    top_p = :topP,
+    min_p = :minP,
+    stop = :stop,
+    num_ctx = :numCtx,
+    num_predict = :numPredict,
+    format = :format,
+    updated_at = :updatedAt
+WHERE id = :id;
 
 -- Rename a session
 updateSessionTitle:
@@ -151,6 +197,13 @@ getLatestSession:
 SELECT *
 FROM Session
 ORDER BY updated_at DESC
+LIMIT 1;
+
+getLastUsedSession:
+SELECT sv.*
+FROM SessionView sv
+JOIN Message m ON m.session_id = sv.id
+ORDER BY m.created_at DESC
 LIMIT 1;
 
 
@@ -212,6 +265,11 @@ deleteMessageById:
 DELETE FROM Message
 WHERE id = :id;
 
+
+getLastMessage:
+SELECT * FROM MessageView
+ORDER BY createdAt DESC
+LIMIT 1;
 
 getLastMessageOfSessionId:
 SELECT * FROM MessageView

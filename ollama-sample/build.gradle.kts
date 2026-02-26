@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.sqldelight)
+    alias(libs.plugins.serialization)
 }
 
 kotlin {
@@ -64,6 +65,9 @@ kotlin {
                 implementation(libs.markdow.code.highlights)
                 implementation(libs.highlights)
 
+                // datastore
+                implementation(libs.datastore.core)
+
 
             }
         }
@@ -77,6 +81,7 @@ kotlin {
 
 
                 implementation(libs.koin.android)
+                implementation(libs.datastore.preferences)
             }
         }
         val desktopMain by getting {

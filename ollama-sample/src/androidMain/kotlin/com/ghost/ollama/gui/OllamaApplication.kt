@@ -6,7 +6,9 @@ import com.ghost.ollama.gui.di.platformModule
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
 import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.GlobalContext.startKoin
+import org.koin.core.logger.Level
 
 class OllamaApplication : Application() {
     override fun onCreate() {
@@ -14,8 +16,11 @@ class OllamaApplication : Application() {
 
         startKoin {
             androidContext(this@OllamaApplication)
-            modules(appModule, platformModule)
+            androidLogger(Level.ERROR)
+            modules(appModule)
         }
+
+
         if (BuildConfig.DEBUG) {
             Napier.base(DebugAntilog())
         }

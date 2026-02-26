@@ -11,3 +11,5 @@ expect class PlatformConfiguration {
 
 @Composable
 expect fun rememberPlatformConfiguration(): PlatformConfiguration
+
+

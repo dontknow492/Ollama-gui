@@ -11,6 +11,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ghost.ollama.gui.ui.`interface`.SettingsDialog
 import com.ghost.ollama.gui.ui.`interface`.SideBar
 import com.ghost.ollama.gui.ui.viewmodel.*
 import kotlinx.coroutines.flow.Flow
@@ -22,12 +23,13 @@ fun DesktopChatScreen(
     viewModel: ChatViewModel,
     sessionState: SessionUiState,
     snackbarHostState: SnackbarHostState,
-    onSessionClick: (String) -> Unit,
+    onChatEvent: (ChatEvent) -> Unit,
     onEvent: (SessionEvent) -> Unit,
     sideEffects: Flow<SessionSideEffect>
 
 ) {
     var isDesktopSidebarExpanded by remember { mutableStateOf(false) }
+    var isSettingOpen by remember { mutableStateOf(false) }
 
     // --- DESKTOP/TABLET LAYOUT: Persistent Side Rail / Drawer ---
     Row(modifier = modifier.fillMaxSize()) {
@@ -41,9 +43,10 @@ fun DesktopChatScreen(
                     state = sessionState,
                     expanded = true,
                     onToggle = { isDesktopSidebarExpanded = false },
+                    onSettingsClick = { isSettingOpen = true },
                     onEvent = onEvent,
                     sideEffects = sideEffects,
-                    onSessionClick = onSessionClick
+                    onSessionClick = { onChatEvent(ChatEvent.SessionSelected(it)) }
                 )
             }
         } else {
@@ -55,9 +58,10 @@ fun DesktopChatScreen(
                     state = sessionState,
                     expanded = false,
                     onToggle = { isDesktopSidebarExpanded = true },
+                    onSettingsClick = { isSettingOpen = true },
                     onEvent = onEvent,
                     sideEffects = sideEffects,
-                    onSessionClick = onSessionClick
+                    onSessionClick = { onChatEvent(ChatEvent.SessionSelected(it)) }
                 )
             }
         }
@@ -68,7 +72,16 @@ fun DesktopChatScreen(
             snackbarHostState = snackbarHostState,
             isMobile = false,
             onMenuClick = { }, // Unused on desktop
+            onChatEvent = onChatEvent,
+            onSessionEvent = onEvent,
             modifier = Modifier.weight(1f)
         )
+    }
+
+    if (isSettingOpen) {
+        // Show settings dialog or screen
+        SettingsDialog {
+            isSettingOpen = false
+        }
     }
 }

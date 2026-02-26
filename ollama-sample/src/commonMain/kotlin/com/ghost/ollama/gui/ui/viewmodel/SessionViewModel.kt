@@ -6,6 +6,8 @@ import app.cash.paging.PagingData
 import app.cash.paging.cachedIn
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.repository.OllamaRepository
+import com.ghost.ollama.gui.ui.components.TuneOptions
+import com.ghost.ollama.gui.utils.applyTuneOptions
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -26,7 +28,7 @@ sealed interface SessionUiState {
         val isSelectionModeActive: Boolean = false,
         val isExporting: Boolean = false,
         val ollamaVersion: String,
-        val isOllamaRunning: Boolean // 👈 ADD THIS
+        val isOllamaRunning: Boolean
     ) : SessionUiState
 
     data class Error(val message: String) : SessionUiState
@@ -55,6 +57,7 @@ sealed interface SessionEvent {
     data object BatchExport : SessionEvent
     data class ToggleSessionPin(val sessionId: String) : SessionEvent
     data object Retry : SessionEvent
+    data class UpdateSessionTuneOptions(val tuneOptions: TuneOptions, val session: SessionView) : SessionEvent
 }
 
 // ==========================================
@@ -178,10 +181,7 @@ class SessionViewModel(
             }
 
             is SessionEvent.DeleteSession -> {
-                viewModelScope.launch {
-                    repository.deleteSession(event.sessionId)
-                    _selectedSessionIds.value -= event.sessionId
-                }
+                deleteSession(event.sessionId)
             }
 
             is SessionEvent.ToggleSelection -> {
@@ -192,20 +192,23 @@ class SessionViewModel(
                     _selectedSessionIds.value = current + event.sessionId
                 }
             }
+            is SessionEvent.UpdateSessionTuneOptions -> {
+                viewModelScope.launch {
+                    try {
+                        val newSession = event.session.applyTuneOptions(event.tuneOptions)
+                        repository.updateSession(newSession)
+                    } catch (e: Exception) {
+                        emitSideEffect(SessionSideEffect.ShowToast("Failed to update tune options"))
+                    }
+                }
+            }
 
             SessionEvent.ClearSelection -> {
                 _selectedSessionIds.value = emptySet()
             }
 
             SessionEvent.BatchDelete -> {
-                viewModelScope.launch {
-                    val idsToDelete = _selectedSessionIds.value
-                    if (idsToDelete.isNotEmpty()) {
-                        repository.batchDeleteSessions(idsToDelete)
-                        _selectedSessionIds.value = emptySet()
-                        emitSideEffect(SessionSideEffect.ShowToast("${idsToDelete.size} sessions deleted"))
-                    }
-                }
+                batchDeleteSessions(_selectedSessionIds.value)
             }
 
             is SessionEvent.ExportSession -> {
@@ -234,13 +237,45 @@ class SessionViewModel(
     }
 
     private fun createNewSession(title: String?) {
-        val title = title ?: "New Chat"
         viewModelScope.launch {
             try {
-                val sessionId = repository.createOrReuseSession(title)
+                val sessionId = repository.createOrReuseSession()
                 emitSideEffect(SessionSideEffect.NewSessionCreated(sessionId))
             } catch (e: Exception) {
                 emitSideEffect(SessionSideEffect.ShowToast("Failed to create new session"))
+            }
+        }
+    }
+
+    private fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            try {
+                val last = repository.getLastMessage() ?: return@launch
+                repository.deleteSession(sessionId)
+                _selectedSessionIds.value -= sessionId
+                if (last.sessionId == sessionId) {
+                    createNewSession(null)
+                }
+            } catch (e: Exception) {
+                emitSideEffect(SessionSideEffect.ShowToast("Failed to delete session"))
+            }
+        }
+    }
+
+    private fun batchDeleteSessions(sessionIds: Set<String>) {
+        viewModelScope.launch {
+            try {
+                val last = repository.getLastMessage()
+                repository.batchDeleteSessions(sessionIds)
+                _selectedSessionIds.value = emptySet()
+                if (last != null) {
+                    if (sessionIds.contains(last.sessionId)) {
+                        createNewSession(null)
+                    }
+                }
+                emitSideEffect(SessionSideEffect.ShowToast("${sessionIds.size} sessions deleted"))
+            } catch (e: Exception) {
+                emitSideEffect(SessionSideEffect.ShowToast("Failed to delete sessions"))
             }
         }
     }
