@@ -9,10 +9,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -24,8 +21,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ghost.ollama.gui.models.ModelDetailState
+import com.ghost.ollama.gui.models.ModelsState
+import com.ghost.ollama.models.modelMGMT.tags.ModelInfo
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.vectorResource
 
 
 @Immutable
@@ -33,8 +34,9 @@ data class InputBarState(
     val inputText: String = "",
     val placeholder: String = "Ask anything or share a file",
     val isGenerating: Boolean = false,
-    val selectedModel: String = "Fast",
-    val isSendEnabled: Boolean = false
+    val selectedModel: ModelDetailState,
+    val isSendEnabled: Boolean = false,
+    val installedModels: ModelsState,
 )
 
 
@@ -48,7 +50,8 @@ fun InputBar(
     onMicClick: () -> Unit,
     onSendClick: (String) -> Unit,
     onStopClick: () -> Unit,
-    onModelClick: () -> Unit,
+    onModelSelected: (ModelInfo) -> Unit,
+    onRetryModel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -89,7 +92,8 @@ fun InputBar(
                 onMicClick = onMicClick,
                 onSendClick = onSendClick,
                 onStopClick = onStopClick,
-                onModelClick = onModelClick
+                onModelSelected = onModelSelected,
+                onRetryModel = onRetryModel
             )
         }
     }
@@ -178,7 +182,8 @@ private fun BottomActionRow(
     onMicClick: () -> Unit,
     onSendClick: (String) -> Unit,
     onStopClick: () -> Unit,
-    onModelClick: () -> Unit
+    onModelSelected: (ModelInfo) -> Unit,
+    onRetryModel: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -195,7 +200,8 @@ private fun BottomActionRow(
             onMicClick = onMicClick,
             onSendClick = onSendClick,
             onStopClick = onStopClick,
-            onModelClick = onModelClick
+            onModelSelected = onModelSelected,
+            onRetryModel = onRetryModel
         )
     }
 }
@@ -237,25 +243,31 @@ private fun RightActions(
     onMicClick: () -> Unit,
     onSendClick: (String) -> Unit,
     onStopClick: () -> Unit,
-    onModelClick: () -> Unit
+    onModelSelected: (ModelInfo) -> Unit,
+    onRetryModel: () -> Unit
 ) {
+    var isModelMenuExpanded by remember { mutableStateOf(false) }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
 
         // Model selector
-        TextButton(
-            onClick = onModelClick,
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(state.selectedModel)
-            Icon(
-                painter = painterResource(Res.drawable.keyboard_arrow_down),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-        }
+
+
+        ModelSelector(
+            selectedModelState = state.selectedModel,
+            modelsState = state.installedModels,
+            expanded = isModelMenuExpanded,
+            onExpandChange = { expanded ->
+                isModelMenuExpanded = expanded
+            },
+            onModelSelected = { model ->
+                onModelSelected(model)
+            },
+            onRetry = onRetryModel
+        )
 
         IconButton(onClick = onMicClick) {
             Icon(
@@ -276,12 +288,166 @@ private fun RightActions(
 
             state.isSendEnabled -> {
                 IconButton(
-                    onClick = { onSendClick(state.inputText) }
+                    onClick = { onSendClick(state.inputText) },
+                    enabled = state.selectedModel != null
                 ) {
                     Icon(
                         painter = painterResource(Res.drawable.send),
                         contentDescription = "Send Message"
                     )
+                }
+            }
+        }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ModelSelector(
+    selectedModelState: ModelDetailState,
+    modelsState: ModelsState,
+    expanded: Boolean,
+    onExpandChange: (Boolean) -> Unit,
+    onModelSelected: (ModelInfo) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+
+    val modelsLoaded = modelsState is ModelsState.Success
+
+    // Extract selected model name safely
+    val selectedModelName = when (selectedModelState) {
+        is ModelDetailState.Success ->{
+            val family = selectedModelState.data.details?.family ?: "Unknown Family"
+            val name = family + "-" + (selectedModelState.data.details?.parameterSize ?: "")
+            name.uppercase()
+        }
+
+
+        ModelDetailState.Loading ->
+            "Loading model..."
+
+        is ModelDetailState.Error ->
+            "Model error"
+
+        ModelDetailState.Idle ->
+            "Select model"
+    }
+
+    val buttonText = when (modelsState) {
+        is ModelsState.Success -> selectedModelName
+        ModelsState.Loading -> "Loading models..."
+        is ModelsState.Error -> "Failed to load"
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && modelsLoaded,
+        onExpandedChange = {
+            if (modelsLoaded) onExpandChange(!expanded)
+        },
+        modifier = modifier
+    ) {
+
+        TextButton(
+            onClick = { if (modelsLoaded) onExpandChange(true) },
+            enabled = modelsLoaded,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.menuAnchor(
+                ExposedDropdownMenuAnchorType.PrimaryNotEditable
+            )
+        ) {
+            Text(
+                text = buttonText,
+                color = if (modelsLoaded)
+                    MaterialTheme.colorScheme.onSurface
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+
+            when {
+                modelsState is ModelsState.Loading ||
+                selectedModelState is ModelDetailState.Loading -> {
+
+                    Spacer(Modifier.width(6.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+
+                else -> {
+                    Icon(
+                        imageVector = vectorResource(Res.drawable.keyboard_arrow_down),
+                        contentDescription = null
+                    )
+                }
+            }
+        }
+
+        ExposedDropdownMenu(
+            expanded = expanded && modelsLoaded,
+            onDismissRequest = { onExpandChange(false) }
+        ) {
+
+            when (modelsState) {
+
+                ModelsState.Loading -> {
+                    DropdownMenuItem(
+                        text = { Text("Loading models...") },
+                        onClick = {},
+                        enabled = false
+                    )
+                }
+
+                is ModelsState.Error -> {
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("Failed to load models")
+                                Text(
+                                    modelsState.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        },
+                        onClick = onRetry
+                    )
+                }
+
+                is ModelsState.Success -> {
+                    val models = modelsState.data.models
+
+                    if (models.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No models found") },
+                            onClick = {},
+                            enabled = false
+                        )
+                    } else {
+                        models.forEach { model ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(model.name)
+
+                                        model.details?.parameterSize?.let {
+                                            Text(
+                                                text = it,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onModelSelected(model)
+                                    onExpandChange(false)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -14,14 +14,17 @@ import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.gui.EntityQueries
 import com.ghost.ollama.gui.MessageView
 import com.ghost.ollama.gui.SessionView
-import com.ghost.ollama.gui.viewmodel.UiChatMessage
+import com.ghost.ollama.gui.models.ModelDetailState
+import com.ghost.ollama.gui.models.ModelsState
 import com.ghost.ollama.gui.utils.toUiChatMessage
+import com.ghost.ollama.gui.viewmodel.UiChatMessage
 import com.ghost.ollama.models.chat.ChatMessage
 import com.ghost.ollama.models.chat.ChatOptions
 import com.ghost.ollama.models.chat.ChatResponse
 import com.ghost.ollama.models.generate.GenerateResponse
 import com.ghost.ollama.models.modelMGMT.ShowModelResponse
 import com.ghost.ollama.models.modelMGMT.tags.ListModelsResponse
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -502,13 +505,50 @@ class OllamaRepository(
     }
 
     // Models
-    fun observeModels(): Flow<ListModelsResponse?> {
+    fun observeModels(): Flow<ModelsState> {
         return ollamaClient.observeModels()
+            .map<ListModelsResponse?, ModelsState> { response ->
+                Napier.d { ("Received models update: ${response?.models?.joinToString { it.name }}") }
+                if (response != null) {
+                    ModelsState.Success(response)
+                } else {
+                    ModelsState.Error("No response from Ollama")
+                }
+            }
+            .onStart {
+                emit(ModelsState.Loading)
+            }
+            .catch { e ->
+                emit(
+                    ModelsState.Error(
+                        e.message ?: "Failed to fetch models"
+                    )
+                )
+            }
     }
 
-    suspend fun getModelDetail(name: String, verbose: Boolean = false): ShowModelResponse {
-        return ollamaClient.showModel(name, verbose)
+    fun getModelDetail(
+        name: String,
+        verbose: Boolean = false
+    ): Flow<ModelDetailState> = flow {
+
+        emit(ModelDetailState.Loading)
+
+        val response = ollamaClient.showModel(name, verbose)
+
+        Napier.d { ("Fetched model details for $name: $response") }
+
+        emit(ModelDetailState.Success(response))
+
     }
+        .catch { e ->
+            emit(
+                ModelDetailState.Error(
+                    e.message ?: "Failed to fetch model details"
+                )
+            )
+        }
+        .flowOn(Dispatchers.IO)
 
 
     // ==========================================

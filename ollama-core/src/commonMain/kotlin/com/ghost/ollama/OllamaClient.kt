@@ -205,10 +205,11 @@ class OllamaClient(
         while (currentCoroutineContext().isActive) {
 
             val models = try {
-                safeApiCall {
+                safeApiCall<ListModelsResponse> {
                     httpClient.get("$baseUrl/api/tags")
                 }
             } catch (e: Exception) {
+                println("Failed to fetch models: ${e.message}")
                 null
             }
 

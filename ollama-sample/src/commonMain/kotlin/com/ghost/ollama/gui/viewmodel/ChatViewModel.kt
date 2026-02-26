@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import app.cash.paging.PagingData
 import com.ghost.ollama.exception.OllamaNetworkException
 import com.ghost.ollama.gui.SessionView
+import com.ghost.ollama.gui.models.ModelsState
 import com.ghost.ollama.gui.repository.OllamaRepository
 import com.ghost.ollama.gui.utils.mapToUiChatMessages
 import com.ghost.ollama.models.chat.ChatResponse
+import com.ghost.ollama.models.modelMGMT.tags.ModelDetails
+import com.ghost.ollama.models.modelMGMT.tags.ModelInfo
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -62,12 +65,13 @@ sealed class ChatSideEffect {
 
 sealed interface ChatEvent {
     data class SessionSelected(val sessionId: String) : ChatEvent
-    data class SendMessage(val content: String, val model: String = "qwen3:4b", val images: List<String>? = null) :
+    data class SendMessage(val content: String, val images: List<String>? = null) :
         ChatEvent
 
     object StopGeneration : ChatEvent
     data class DeleteMessage(val messageId: String) : ChatEvent
     data class CopyMessage(val messageId: String) : ChatEvent
+    data class SelectModel(val model: ModelInfo) : ChatEvent
     object ClearChat : ChatEvent
     object RetryLastMessage : ChatEvent
 }
@@ -154,9 +158,32 @@ class ChatViewModel(
                     )
             }
 
-    val installedModels = ollamaRepository
+    val installedModels: SharedFlow<ModelsState> =
+    ollamaRepository
         .observeModels()
-        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000))
+        .shareIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            replay = 1 // VERY IMPORTANT
+        )
+
+    private val _selectedModel = MutableStateFlow<ModelInfo?>(null)
+    private val selectedModel: StateFlow<ModelInfo?> = _selectedModel.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectedModelDetailed =
+        selectedModel.flatMapLatest {
+            if (it != null) {
+                ollamaRepository.getModelDetail(it.name, verbose =false)
+            } else {
+                flowOf(null)
+            }
+        }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                null
+            )
 
 
     init {
@@ -165,6 +192,20 @@ class ChatViewModel(
         viewModelScope.launch {
             val initial = ollamaRepository.getOrCreateActiveSession().first()
             currentSessionId.value = initial.id
+
+            installedModels.collect { state ->
+            if (state is ModelsState.Success) {
+
+                val models = state.data.models
+
+                if (
+                    models.isNotEmpty() &&
+                    _selectedModel.value == null
+                ) {
+                    _selectedModel.value = models.first()
+                }
+            }
+        }
 
         }
     }
@@ -176,10 +217,16 @@ class ChatViewModel(
     fun onEvent(event: ChatEvent) {
         when (event) {
             is ChatEvent.SessionSelected -> setCurrentSession(event.sessionId)
-            is ChatEvent.SendMessage -> sendMessage(event.content, event.model, event.images)
+            is ChatEvent.SendMessage -> sendMessage(event.content, event.images)
             ChatEvent.StopGeneration -> stopGeneration()
             is ChatEvent.DeleteMessage -> deleteMessage(event.messageId)
             is ChatEvent.CopyMessage -> copyMessage(event.messageId)
+            is ChatEvent.SelectModel -> {
+                // Handle model selection if needed
+                Napier.d(tag = "ChatViewModel", message = "Model selected: ${event.model}")
+                _selectedModel.update { event.model }
+
+            }
             ChatEvent.ClearChat -> clearChat()
             ChatEvent.RetryLastMessage -> retryLastMessage()
         }
@@ -211,16 +258,20 @@ class ChatViewModel(
     /**
      * Send a new user message and start streaming the assistant's response.
      */
-    private fun sendMessage(content: String, model: String = "qwen3:4b", images: List<String>? = null) {
+    private fun sendMessage(content: String, images: List<String>? = null) {
         if (_isGenerating.value) {
             Napier.w(tag = "ChatViewModel", message = "sendMessage ignored: already generating")
+            return
+        }
+        if (_selectedModel.value == null) {
+            Napier.w(tag = "ChatViewModel", message = "sendMessage ignored: no model selected")
             return
         }
 
 //        val model = chatOptions.value.model.ifEmpty { "qwen3:4b" } // fallback
         Napier.d(
             tag = "ChatViewModel",
-            message = "sendMessage: content='$content', model=$model, images=${images?.size}"
+            message = "sendMessage: content='$content', model=${selectedModel.value?.name}, images=${images?.size}"
         )
 
         cancelCurrentGeneration() // ensure no stale job
@@ -233,7 +284,7 @@ class ChatViewModel(
             try {
                 ollamaRepository.sendChatMessageStreaming(
                     sessionId = activeSession.id,
-                    modelName = model,
+                    modelName = selectedModel.value!!.name,
                     content = content,
                     role = MessageRole.USER
                 ).collect { response ->

@@ -19,6 +19,7 @@ import com.ghost.ollama.gui.models.suggestion.SuggestionPrompt
 import com.ghost.ollama.gui.ui.components.InputBar
 import com.ghost.ollama.gui.ui.components.InputBarState
 import com.ghost.ollama.gui.viewmodel.ChatEvent
+import com.ghost.ollama.models.modelMGMT.tags.ModelInfo
 import ollama_kmp.ollama_sample.generated.resources.Res
 import ollama_kmp.ollama_sample.generated.resources.stars_2
 import org.jetbrains.compose.resources.painterResource
@@ -128,7 +129,8 @@ fun EmptySessionScreen(
     onChatEvent: (ChatEvent) -> Unit,
     onAddClick: () -> Unit = {},
     onToolsClick: () -> Unit = {},
-    onModelSelectClick: () -> Unit = {},
+    onModelSelected: (ModelInfo) -> Unit,
+    onRetryModel: () -> Unit,
     onMicClick: () -> Unit = {},
 ) {
     Box(
@@ -183,8 +185,9 @@ fun EmptySessionScreen(
                 onToolsClick = onToolsClick,
                 onMicClick = onMicClick,
                 onSendClick = { onChatEvent(ChatEvent.SendMessage(it)) },
-                onModelClick = onModelSelectClick,
+                onModelSelected = onModelSelected,
                 onStopClick = { onChatEvent(ChatEvent.StopGeneration) },
+                onRetryModel = onRetryModel,
             )
 
             Spacer(modifier = Modifier.height(24.dp))

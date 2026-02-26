@@ -99,7 +99,8 @@ fun ChatContentScreen(
                 onToolsClick = onToolsClicked,
                 onMicClick = {},
                 onStopClick = { onChatEvent(ChatEvent.StopGeneration) },
-                onModelClick = { },
+                onModelSelected = { onChatEvent(ChatEvent.SelectModel(it)) },
+                onRetryModel = { /* Handle retry model if needed */ }
             )
         }
     }

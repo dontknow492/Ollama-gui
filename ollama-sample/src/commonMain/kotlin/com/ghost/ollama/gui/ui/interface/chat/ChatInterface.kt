@@ -12,15 +12,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cash.paging.compose.collectAsLazyPagingItems
 import com.ghost.ollama.gui.SessionView
+import com.ghost.ollama.gui.models.ModelDetailState
+import com.ghost.ollama.gui.models.ModelsState
 import com.ghost.ollama.gui.ui.components.*
 import com.ghost.ollama.gui.ui.`interface`.RenameSessionDialog
 import com.ghost.ollama.gui.utils.toTuneOptions
-import com.ghost.ollama.gui.viewmodel.ChatEvent
-import com.ghost.ollama.gui.viewmodel.ChatSideEffect
-import com.ghost.ollama.gui.viewmodel.ChatUiState
-import com.ghost.ollama.gui.viewmodel.ChatViewModel
-import com.ghost.ollama.gui.viewmodel.SessionEvent
-import com.ghost.ollama.gui.viewmodel.SessionViewModel
+import com.ghost.ollama.gui.viewmodel.*
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.launch
 import ollama_kmp.ollama_sample.generated.resources.Res
 import ollama_kmp.ollama_sample.generated.resources.clear_all
@@ -109,13 +107,25 @@ fun ChatMainContent(
     onSessionEvent: (SessionEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+
+    val chatState by viewModel.state.collectAsStateWithLifecycle()
+    val selectedModel by viewModel.selectedModelDetailed.collectAsStateWithLifecycle()
+    val installedModels by viewModel.installedModels.collectAsStateWithLifecycle(ModelsState.Loading)
+
     var renameSession by remember { mutableStateOf<SessionView?>(null) }
     var deleteSession by remember { mutableStateOf<SessionView?>(null) }
 //    var messages = state.messages
-    var inputBarState by remember { mutableStateOf(InputBarState()) }
+    var inputBarState by remember(installedModels, selectedModel) {
+        Napier.d { "Recomputing inputBarState with selectedModel: $selectedModel and installedModels: $installedModels" }
+        mutableStateOf(
+            InputBarState(
+                selectedModel = selectedModel ?: ModelDetailState.Idle,
+                installedModels = installedModels
+            )
+        )
+    }
     var isTuneVisible by remember { mutableStateOf(false) }
 
-    val chatState by viewModel.state.collectAsStateWithLifecycle()
 
     val tuneOptions = remember(chatState.session) {
         chatState.session?.toTuneOptions()
@@ -171,7 +181,9 @@ fun ChatMainContent(
                 onSuggestionClick = {
                     inputBarState = inputBarState.copy(inputText = it, isSendEnabled = it.isNotBlank())
                 },
-                onToolsClick = { isTuneVisible = true }
+                onToolsClick = { isTuneVisible = true },
+                onModelSelected = { onChatEvent(ChatEvent.SelectModel(it)) },
+                onRetryModel = { /* Handle retry model if needed */ },
             )
 
             false -> ChatContentScreen(
