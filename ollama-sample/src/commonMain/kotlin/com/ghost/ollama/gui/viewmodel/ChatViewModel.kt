@@ -9,7 +9,6 @@ import com.ghost.ollama.gui.models.ModelsState
 import com.ghost.ollama.gui.repository.OllamaRepository
 import com.ghost.ollama.gui.utils.mapToUiChatMessages
 import com.ghost.ollama.models.chat.ChatResponse
-import com.ghost.ollama.models.modelMGMT.tags.ModelDetails
 import com.ghost.ollama.models.modelMGMT.tags.ModelInfo
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.*
@@ -159,13 +158,13 @@ class ChatViewModel(
             }
 
     val installedModels: SharedFlow<ModelsState> =
-    ollamaRepository
-        .observeModels()
-        .shareIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            replay = 1 // VERY IMPORTANT
-        )
+        ollamaRepository
+            .observeModels()
+            .shareIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                replay = 1 // VERY IMPORTANT
+            )
 
     private val _selectedModel = MutableStateFlow<ModelInfo?>(null)
     private val selectedModel: StateFlow<ModelInfo?> = _selectedModel.asStateFlow()
@@ -174,7 +173,7 @@ class ChatViewModel(
     val selectedModelDetailed =
         selectedModel.flatMapLatest {
             if (it != null) {
-                ollamaRepository.getModelDetail(it.name, verbose =false)
+                ollamaRepository.getModelDetail(it.name, verbose = false)
             } else {
                 flowOf(null)
             }
@@ -194,18 +193,18 @@ class ChatViewModel(
             currentSessionId.value = initial.id
 
             installedModels.collect { state ->
-            if (state is ModelsState.Success) {
+                if (state is ModelsState.Success) {
 
-                val models = state.data.models
+                    val models = state.data.models
 
-                if (
-                    models.isNotEmpty() &&
-                    _selectedModel.value == null
-                ) {
-                    _selectedModel.value = models.first()
+                    if (
+                        models.isNotEmpty() &&
+                        _selectedModel.value == null
+                    ) {
+                        _selectedModel.value = models.first()
+                    }
                 }
             }
-        }
 
         }
     }
@@ -225,8 +224,10 @@ class ChatViewModel(
                 // Handle model selection if needed
                 Napier.d(tag = "ChatViewModel", message = "Model selected: ${event.model}")
                 _selectedModel.update { event.model }
+                Napier.d(tag = "ChatViewModel", message = "Updated selected model to: ${_selectedModel.value?.model}")
 
             }
+
             ChatEvent.ClearChat -> clearChat()
             ChatEvent.RetryLastMessage -> retryLastMessage()
         }

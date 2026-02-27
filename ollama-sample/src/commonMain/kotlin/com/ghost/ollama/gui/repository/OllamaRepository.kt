@@ -22,13 +22,11 @@ import com.ghost.ollama.models.chat.ChatMessage
 import com.ghost.ollama.models.chat.ChatOptions
 import com.ghost.ollama.models.chat.ChatResponse
 import com.ghost.ollama.models.generate.GenerateResponse
-import com.ghost.ollama.models.modelMGMT.ShowModelResponse
 import com.ghost.ollama.models.modelMGMT.tags.ListModelsResponse
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
@@ -326,7 +324,7 @@ class OllamaRepository(
         return ollamaClient.chatStream(model = modelName, messages = history)
 
             .onEach { responseChunk ->
-                delay(50) // Simulate network delay for testing streaming in UI
+//                delay(50) // Simulate network delay for testing streaming in UI
                 // Fast SQLite String concatenation for tokens
                 if (responseChunk.message.content.isNotEmpty()) {
                     entityQueries.appendMessageContent(responseChunk.message.content, assistantMsgId)
@@ -531,6 +529,7 @@ class OllamaRepository(
         name: String,
         verbose: Boolean = false
     ): Flow<ModelDetailState> = flow {
+        Napier.d { ("Received model detail update: ${name}") }
 
         emit(ModelDetailState.Loading)
 
@@ -580,3 +579,4 @@ class OllamaRepository(
         return "msg_${kotlin.random.Random.nextLong()}_${currentTimeMillis()}"
     }
 }
+

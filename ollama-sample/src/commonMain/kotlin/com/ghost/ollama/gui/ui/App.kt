@@ -22,32 +22,8 @@ fun App() {
 //    val appTheme: AppTheme = settingRepositor
 
     OllamaTheme(themeMode = themeMode) {
-//        LaunchedEffect(Unit) {
-//            try {
-//                val version = client.generate(
-//                    "qwen3:4b",
-//                    think = ThinkBoolean(false),
-//                    prompt = "Hello",
-////                    messages = listOf(ChatMessage(role = ChatMessage.Role.USER, content = "Hello"))
-//                )
-//                versionText = version.response ?: "faaaa"
-////                version.onEach { delay(100) }.collect {
-////                    versionText += it.thinking
-////                }
-////                versionText = version.toString()
-//            } catch (e: Exception) {
-//                errorText = "Error: ${e.message}"
-//                versionText = "Failed to load version"
-//            }
-//        }
         Surface {
-//            SelectionContainer {
-//                if (errorText != null) {
-//                    Text(errorText!!)
-//                } else {
-//                    Text(versionText)
-//                }
-//            }
+//            DownloadScreen()
             ChatScreen()
         }
     }

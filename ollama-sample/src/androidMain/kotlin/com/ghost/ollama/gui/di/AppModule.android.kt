@@ -10,12 +10,15 @@ import org.koin.dsl.module
 
 actual val platformModule: Module = module {
 
+
     single<SqlDriver> {
+//        androidContext().deleteDatabase("ollama.db")
         AndroidSqliteDriver(
             schema = OllamaDatabase.Schema,
             context = androidContext(),
             name = "ollama.db"
         )
+
     }
 
     single { DataStoreFactory(androidContext()) }

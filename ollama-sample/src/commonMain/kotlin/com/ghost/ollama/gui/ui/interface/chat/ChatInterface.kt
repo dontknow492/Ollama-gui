@@ -171,7 +171,8 @@ fun ChatMainContent(
 
         when (messages.itemCount == 0) {
             true -> EmptySessionScreen(
-                modifier = Modifier.padding(paddingValues),
+                modifier = Modifier
+                    .padding(paddingValues),
                 userName = "Ollama",
                 inputBarState = inputBarState,
                 onInputChanged = {
@@ -187,7 +188,9 @@ fun ChatMainContent(
             )
 
             false -> ChatContentScreen(
-                modifier = Modifier.padding(paddingValues),
+                modifier = Modifier
+//                    .padding(paddingValues)
+                ,
                 messages = messages,
                 inputBarState = inputBarState,
                 isMobile = isMobile,

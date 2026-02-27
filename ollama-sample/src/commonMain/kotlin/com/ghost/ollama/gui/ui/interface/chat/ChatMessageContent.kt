@@ -85,13 +85,12 @@ fun ChatContentScreen(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(8.dp)
+                .padding(horizontal = 8.dp)
         ) {
             InputBar(
-                modifier = Modifier.padding(
-                    if (isMobile) 4.dp else 40.dp
-                ).widthIn(max = 800.dp),
+                modifier = Modifier
+                    .widthIn(max = 800.dp)
+                    .padding(if (isMobile) 4.dp else 40.dp),
                 state = inputBarState,
                 onInputChanged = onInputChange,
                 onSendClick = { onChatEvent(ChatEvent.SendMessage(inputBarState.inputText)) },
@@ -100,7 +99,7 @@ fun ChatContentScreen(
                 onMicClick = {},
                 onStopClick = { onChatEvent(ChatEvent.StopGeneration) },
                 onModelSelected = { onChatEvent(ChatEvent.SelectModel(it)) },
-                onRetryModel = { /* Handle retry model if needed */ }
+                onRetryModel = { /* Handle retry model */ }
             )
         }
     }

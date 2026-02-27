@@ -300,3 +300,66 @@ SET
     error_message = 'Some error occurred while processing the message.'
 WHERE role = 'assistant'
 AND is_done = 0;
+
+
+
+-- Table for the main model info
+CREATE TABLE ModelEntity (
+    slug TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    pullCount TEXT NOT NULL,
+    updated TEXT NOT NULL,
+    readme TEXT NOT NULL,
+    -- Simple way to store capabilities: comma-separated string
+    capabilities TEXT AS List<String> NOT NULL
+);
+
+-- Table for model tags (8b, 70b, etc.)
+CREATE TABLE TagEntity (
+    tag TEXT NOT NULL PRIMARY KEY,
+    modelSlug TEXT NOT NULL,
+    size TEXT NOT NULL,
+    contextWindow TEXT NOT NULL,
+    inputType TEXT NOT NULL,
+    FOREIGN KEY (modelSlug) REFERENCES ModelEntity(slug) ON DELETE CASCADE
+);
+
+-- Queries
+insertModel:
+INSERT OR REPLACE INTO ModelEntity(slug, name, description, pullCount, updated, readme, capabilities)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+insertTag:
+INSERT OR REPLACE INTO TagEntity(tag, modelSlug, size, contextWindow, inputType)
+VALUES (?, ?, ?, ?, ?);
+
+selectAllModels:
+SELECT * FROM ModelEntity;
+
+getTagsForModel:
+SELECT * FROM TagEntity WHERE modelSlug = ?;
+
+-- Advanced: Get a model and all its tags in one go
+getFullLibrary:
+SELECT * FROM ModelEntity
+JOIN TagEntity ON ModelEntity.slug = TagEntity.modelSlug;
+
+
+countModels:
+SELECT count(*) FROM ModelEntity;
+
+
+-- Query for Paging with Search and Capability filtering
+-- %: matches any sequence of characters
+countFilteredModels:
+SELECT count(*)
+FROM ModelEntity
+WHERE (name LIKE :searchQuery OR slug LIKE :searchQuery)
+AND (:capabilityFilter IS NULL OR capabilities LIKE '%' || :capabilityFilter || '%');
+
+selectModelsFilteredPaged:
+SELECT * FROM ModelEntity
+WHERE (name LIKE :searchQuery OR slug LIKE :searchQuery)
+AND (:capabilityFilter IS NULL OR capabilities LIKE '%' || :capabilityFilter || '%')
+LIMIT :limit OFFSET :offset;

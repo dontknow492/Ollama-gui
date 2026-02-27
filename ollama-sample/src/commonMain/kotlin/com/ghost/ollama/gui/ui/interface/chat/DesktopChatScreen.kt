@@ -13,12 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ghost.ollama.gui.ui.`interface`.SettingsDialog
 import com.ghost.ollama.gui.ui.`interface`.SideBar
-import com.ghost.ollama.gui.viewmodel.ChatEvent
-import com.ghost.ollama.gui.viewmodel.ChatUiState
-import com.ghost.ollama.gui.viewmodel.ChatViewModel
-import com.ghost.ollama.gui.viewmodel.SessionEvent
-import com.ghost.ollama.gui.viewmodel.SessionSideEffect
-import com.ghost.ollama.gui.viewmodel.SessionUiState
+import com.ghost.ollama.gui.viewmodel.*
 import kotlinx.coroutines.flow.Flow
 
 @Composable

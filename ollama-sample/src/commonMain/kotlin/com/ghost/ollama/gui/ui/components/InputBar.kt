@@ -95,6 +95,8 @@ fun InputBar(
                 onModelSelected = onModelSelected,
                 onRetryModel = onRetryModel
             )
+
+
         }
     }
 }
@@ -278,10 +280,12 @@ private fun RightActions(
 
         when {
             state.isGenerating -> {
-                IconButton(onClick = onStopClick) {
+                IconButton(
+                    onClick = onStopClick,
+                ) {
                     Icon(
                         painter = painterResource(Res.drawable.stop_circle),
-                        contentDescription = "Stop Generating"
+                        contentDescription = "Stop Generating",
                     )
                 }
             }
@@ -289,11 +293,12 @@ private fun RightActions(
             state.isSendEnabled -> {
                 IconButton(
                     onClick = { onSendClick(state.inputText) },
-                    enabled = state.selectedModel != null
-                ) {
+                    enabled = state.selectedModel != null,
+
+                    ) {
                     Icon(
                         painter = painterResource(Res.drawable.send),
-                        contentDescription = "Send Message"
+                        contentDescription = "Send Message",
                     )
                 }
             }
@@ -318,7 +323,7 @@ fun ModelSelector(
 
     // Extract selected model name safely
     val selectedModelName = when (selectedModelState) {
-        is ModelDetailState.Success ->{
+        is ModelDetailState.Success -> {
             val family = selectedModelState.data.details?.family ?: "Unknown Family"
             val name = family + "-" + (selectedModelState.data.details?.parameterSize ?: "")
             name.uppercase()
@@ -367,7 +372,7 @@ fun ModelSelector(
 
             when {
                 modelsState is ModelsState.Loading ||
-                selectedModelState is ModelDetailState.Loading -> {
+                        selectedModelState is ModelDetailState.Loading -> {
 
                     Spacer(Modifier.width(6.dp))
                     CircularProgressIndicator(

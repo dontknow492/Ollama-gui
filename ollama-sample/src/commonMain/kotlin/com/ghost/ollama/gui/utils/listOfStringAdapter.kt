@@ -19,3 +19,18 @@ val listOfStringAdapter = object : ColumnAdapter<List<String>, String> {
         return json.encodeToString(value)
     }
 }
+
+
+val listOfStringCommaAdapter = object : ColumnAdapter<List<String>, String> {
+    override fun decode(databaseValue: String): List<String> {
+        return if (databaseValue.isEmpty()) {
+            emptyList()
+        } else {
+            databaseValue.split(",")
+        }
+    }
+
+    override fun encode(value: List<String>): String {
+        return value.joinToString(separator = ",")
+    }
+}
