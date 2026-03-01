@@ -120,7 +120,7 @@ fun MessageView.toUiChatMessage(
 ): UiChatMessage {
 
     val isThinking = thinking != null && content.isNullOrEmpty()
-    val isContentGenerating = !content.isNullOrEmpty() && !isThinking
+    !content.isNullOrEmpty() && !isThinking
 
     val messageRole = when (role) {
         "assistant" -> MessageRole.ASSISTANT

@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.models.chat.ChatOptions
 import kotlinx.coroutines.CoroutineScope
@@ -82,7 +81,6 @@ fun SessionView.overrideWith(global: GlobalSettings): SessionView {
         format = defaults.format?.name
     )
 }
-
 
 
 //@Single
