@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import app.cash.paging.PagingData
 import app.cash.paging.cachedIn
 import com.ghost.ollama.gui.SessionView
+import com.ghost.ollama.gui.repository.GlobalSettings
 import com.ghost.ollama.gui.repository.OllamaRepository
+import com.ghost.ollama.gui.repository.SettingsRepository
 import com.ghost.ollama.gui.ui.components.TuneOptions
 import com.ghost.ollama.gui.utils.applyTuneOptions
 import io.github.aakira.napier.Napier
@@ -65,8 +67,11 @@ sealed interface SessionEvent {
 // ==========================================
 
 class SessionViewModel(
-    private val repository: OllamaRepository
+    private val repository: OllamaRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
+
+    private val _globalSettings: Flow<GlobalSettings> = settingsRepository.getGlobalSettings()
 
     private val _searchQuery = MutableStateFlow("")
     private val _selectedSessionIds = MutableStateFlow<Set<String>>(emptySet())
@@ -88,6 +93,13 @@ class SessionViewModel(
 
     init {
         fetchOllamaVersion()
+        viewModelScope.launch {
+            val settings = _globalSettings.first()
+
+            val session = repository.getOrCreateActiveSessionOnce(settings)
+
+            emitSideEffect(SessionSideEffect.NewSessionCreated(session.id))
+        }
     }
 
 
@@ -240,8 +252,11 @@ class SessionViewModel(
     private fun createNewSession(title: String?) {
         viewModelScope.launch {
             try {
-                val sessionId = repository.createOrReuseSession()
-                emitSideEffect(SessionSideEffect.NewSessionCreated(sessionId))
+                _globalSettings.collectLatest { settings ->
+                    val sessionId = repository.createOrReuseSession(settings)
+                    emitSideEffect(SessionSideEffect.NewSessionCreated(sessionId))
+                }
+
             } catch (e: Exception) {
                 emitSideEffect(SessionSideEffect.ShowToast("Failed to create new session"))
             }

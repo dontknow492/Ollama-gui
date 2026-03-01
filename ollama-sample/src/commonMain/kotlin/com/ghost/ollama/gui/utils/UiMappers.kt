@@ -117,7 +117,6 @@ fun Flow<ChatResponse>.collectToUiChatMessage(
 
 fun MessageView.toUiChatMessage(
     sessionId: String,
-    isStreaming: Boolean = false,
 ): UiChatMessage {
 
     val isThinking = thinking != null && content.isNullOrEmpty()
@@ -131,26 +130,24 @@ fun MessageView.toUiChatMessage(
         else -> MessageRole.ASSISTANT
     }
     val messageState = when {
-        // Error cases take precedence
-        doneReason == "error" -> MessageState.Errored("Generation failed")
 
-        // Thinking state (for reasoning models)
-        isThinking && isStreaming -> MessageState.Generating(isThinking = true)
+        doneReason == "error" ->
+            MessageState.Errored("Generation failed")
 
-        // Content generation
-        isContentGenerating && isStreaming -> MessageState.Generating(isThinking = false)
+        !isDone && thinking != null && content.isNullOrEmpty() ->
+            MessageState.Generating(isThinking = true)
 
-        // Initial loading (waiting for first token)
-        !isDone && !isStreaming -> MessageState.Loading
+        !isDone && !content.isNullOrEmpty() ->
+            MessageState.Generating(isThinking = false)
 
-        // Successfully completed
-        isDone && doneReason == "stop" -> MessageState.Done
+        !isDone ->
+            MessageState.Loading
 
-        // Completed with other reasons (length, etc)
-        isDone -> MessageState.Done
+        isDone ->
+            MessageState.Done
 
-        // Fallback
-        else -> MessageState.Idle
+        else ->
+            MessageState.Idle
     }
 
     return UiChatMessage(
@@ -182,11 +179,10 @@ fun MessageView.toUiChatMessage(
  */
 fun Flow<PagingData<MessageView>>.mapToUiChatMessages(
     sessionId: String,
-    isStreaming: Boolean = false
 ): Flow<PagingData<UiChatMessage>> {
     return this.map { pagingData ->
         pagingData.map { messageView ->
-            messageView.toUiChatMessage(sessionId, isStreaming)
+            messageView.toUiChatMessage(sessionId)
         }
     }
 }

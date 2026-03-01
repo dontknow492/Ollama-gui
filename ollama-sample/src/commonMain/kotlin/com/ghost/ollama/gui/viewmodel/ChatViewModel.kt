@@ -100,7 +100,7 @@ class ChatViewModel(
             .flatMapLatest { id ->
                 id?.let {
                     ollamaRepository.getSessionById(it)
-                } ?: ollamaRepository.getOrCreateActiveSession()
+                } ?: flowOf(null)
             }
             .stateIn(
                 viewModelScope,
@@ -153,7 +153,6 @@ class ChatViewModel(
                     .getMessagesPaged(current.id)
                     .mapToUiChatMessages(
                         sessionId = current.id,
-                        isStreaming = _isGenerating.value
                     )
             }
 
@@ -189,9 +188,6 @@ class ChatViewModel(
         Napier.d(tag = "ChatViewModel", message = "ViewModel initialized with sessionId: ${currentSessionId}")
 
         viewModelScope.launch {
-            val initial = ollamaRepository.getOrCreateActiveSession().first()
-            currentSessionId.value = initial.id
-
             installedModels.collect { state ->
                 if (state is ModelsState.Success) {
 

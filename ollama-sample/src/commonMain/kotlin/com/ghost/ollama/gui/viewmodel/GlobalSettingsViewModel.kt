@@ -2,6 +2,7 @@ package com.ghost.ollama.gui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.enum.ResponseFormat
 import com.ghost.ollama.gui.repository.AppTheme
 import com.ghost.ollama.gui.repository.GlobalSettings
@@ -15,9 +16,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class GlobalSettingsViewModel(
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val ollamaClient: OllamaClient,
 ) : ViewModel() {
-
+    // ============= State =============
     // UI State
     private val _uiState = MutableStateFlow(GlobalSettingsUiState())
     val uiState: StateFlow<GlobalSettingsUiState> = _uiState.asStateFlow()
@@ -149,9 +151,37 @@ class GlobalSettingsViewModel(
             val currentSettings = _uiState.value.settings
             val editState = _editState.value
 
+            val newUrl = editState.baseUrl
+
+            if (currentSettings.baseUrl != editState.baseUrl) {
+
+                try {
+                    // 1️⃣ Try updating client first
+                    ollamaClient.updateBaseUrl(newUrl)
+
+                    // 2️⃣ Optional: test connection
+                    ollamaClient.ollamaVersion() // simple health check
+
+                } catch (e: Exception) {
+
+                    // 3️⃣ Revert client to old URL
+                    ollamaClient.updateBaseUrl(currentSettings.baseUrl)
+
+                    // 4️⃣ Revert datastore to old settings
+                    settingsRepository.saveGlobalSettings(currentSettings)
+
+                    _uiState.update {
+                        it.copy(errorMessage = "Invalid server URL or server unreachable")
+                    }
+
+                    return@launch
+                }
+            }
+
+
             val updatedSettings = currentSettings.copy(
                 defaultModel = editState.defaultModel,
-                baseUrl = editState.baseUrl,
+                baseUrl = newUrl,
                 theme = editState.theme,
                 defaultChatOptions = ChatOptions(
                     seed = editState.seed,
@@ -176,6 +206,11 @@ class GlobalSettingsViewModel(
                 delay(3000)
                 _uiState.update { it.copy(showSuccessMessage = false) }
             }
+
+            if (currentSettings.baseUrl != editState.baseUrl) {
+                ollamaClient.updateBaseUrl(editState.baseUrl)
+            }
+
         }
     }
 
@@ -302,7 +337,8 @@ class GlobalSettingsViewModel(
 data class GlobalSettingsUiState(
     val settings: GlobalSettings = GlobalSettings(),
     val isLoading: Boolean = true,
-    val showSuccessMessage: Boolean = false
+    val showSuccessMessage: Boolean = false,
+    val errorMessage: String? = null
 )
 
 data class GlobalSettingsEditState(

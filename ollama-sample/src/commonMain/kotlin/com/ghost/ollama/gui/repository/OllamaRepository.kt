@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 
@@ -62,7 +63,12 @@ class OllamaRepository(
     /**
      * Creates a new session.
      */
-    suspend fun createOrReuseSession(title: String = "New Chat", sessionType: String = "CHAT"): String {
+    suspend fun createOrReuseSession(
+        globalSettings: GlobalSettings,
+        title: String = "New Chat",
+        sessionType: String = "CHAT",
+    ): String {
+
         val latestSession = entityQueries.getLatestSession().executeAsOneOrNull()
 
         if (latestSession != null) {
@@ -71,12 +77,12 @@ class OllamaRepository(
                 .executeAsOne()
 
             if (messageCount == 0L) {
-                // Reuse existing empty session
                 return latestSession.id
             }
         }
 
-        // Otherwise create new session
+        val defaults = globalSettings.defaultChatOptions
+
         val sessionId = generateUuid()
         val now = currentTimeMillis()
 
@@ -86,7 +92,17 @@ class OllamaRepository(
             created_at = now,
             updated_at = now,
             pinned = false,
-            session_type = sessionType
+            session_type = sessionType,
+
+            seed = defaults.seed?.toLong(),
+            temperature = defaults.temperature?.toDouble(),
+            top_k = defaults.topK?.toLong(),
+            top_p = defaults.topP?.toDouble(),
+            min_p = defaults.minP?.toDouble(),
+            stop = defaults.stop,
+            num_ctx = defaults.numCtx?.toLong(),
+            num_predict = defaults.numPredict?.toLong(),
+            format = defaults.format?.name
         )
 
         return sessionId
@@ -129,6 +145,7 @@ class OllamaRepository(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getOrCreateActiveSession(
+        globalSettings: GlobalSettings,
         defaultTitle: String = "New Chat",
         sessionType: String = "CHAT"
     ): Flow<SessionView> {
@@ -143,7 +160,7 @@ class OllamaRepository(
                     flowOf(session)
                 } else {
                     flow {
-                        val newId = createOrReuseSession(defaultTitle, sessionType)
+                        val newId = createOrReuseSession(globalSettings, defaultTitle, sessionType)
                         val newSession = entityQueries
                             .getSessionById(newId)
                             .executeAsOne()
@@ -152,6 +169,32 @@ class OllamaRepository(
                     }
                 }
             }
+    }
+
+
+    suspend fun getOrCreateActiveSessionOnce(
+        globalSettings: GlobalSettings,
+        defaultTitle: String = "New Chat",
+        sessionType: String = "CHAT"
+    ): SessionView = withContext(ioDispatcher) {
+
+        val session = entityQueries
+            .getLastUsedSession()
+            .executeAsOneOrNull()
+
+        if (session != null) {
+            return@withContext session
+        }
+
+        val newId = createOrReuseSession(
+            globalSettings = globalSettings,
+            title = defaultTitle,
+            sessionType = sessionType
+        )
+
+        entityQueries
+            .getSessionById(newId)
+            .executeAsOne()
     }
 
 

@@ -109,8 +109,24 @@ FROM Message;
 -- ==========================================
 
 insertSession:
-INSERT INTO Session (id, title, pinned, created_at, updated_at, session_type)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO Session (
+    id,
+    title,
+    pinned,
+    created_at,
+    updated_at,
+    session_type,
+    seed,
+    temperature,
+    top_k,
+    top_p,
+    min_p,
+    stop,
+    num_ctx,
+    num_predict,
+    format
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getSessionById:
 SELECT *

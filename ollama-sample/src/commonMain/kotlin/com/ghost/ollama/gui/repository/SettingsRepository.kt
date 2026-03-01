@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.ghost.ollama.OllamaClient
+import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.models.chat.ChatOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -29,26 +31,6 @@ data class GlobalSettings(
     val autoSave: Boolean = true
 )
 
-// Per-session settings (overrides global)
-@Serializable
-data class SessionSettings(
-    val sessionId: String,
-    val chatOptions: ChatOptions? = null, // Overrides global
-    val modelName: String? = null, // Overrides global defaultModel
-    val customInstructions: String? = null,
-    val temperature: Float? = null, // Convenience override
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-) {
-    // Merge with global settings to get effective settings
-    fun getEffectiveChatOptions(global: GlobalSettings): ChatOptions {
-        return global.defaultChatOptions.mergeWith(chatOptions)
-    }
-
-    fun getEffectiveModel(global: GlobalSettings): String {
-        return modelName ?: global.defaultModel
-    }
-}
 
 // Helper extension to merge ChatOptions
 fun ChatOptions.mergeWith(override: ChatOptions?): ChatOptions {
@@ -68,6 +50,41 @@ fun ChatOptions.mergeWith(override: ChatOptions?): ChatOptions {
 }
 
 
+fun SessionView.withMergedDefaults(global: GlobalSettings): SessionView {
+    val defaults = global.defaultChatOptions
+
+    return copy(
+        seed = seed ?: defaults.seed?.toLong(),
+        temperature = temperature ?: defaults.temperature?.toDouble(),
+        topK = topK ?: defaults.topK?.toLong(),
+        topP = topP ?: defaults.topP?.toDouble(),
+        minP = minP ?: defaults.minP?.toDouble(),
+        stop = stop ?: defaults.stop,
+        numCtx = numCtx ?: defaults.numCtx?.toLong(),
+        numPredict = numPredict ?: defaults.numPredict?.toLong(),
+        format = format ?: defaults.format?.name
+    )
+}
+
+
+fun SessionView.overrideWith(global: GlobalSettings): SessionView {
+    val defaults = global.defaultChatOptions
+
+    return copy(
+        seed = defaults.seed?.toLong(),
+        temperature = defaults.temperature?.toDouble(),
+        topK = defaults.topK?.toLong(),
+        topP = defaults.topP?.toDouble(),
+        minP = defaults.minP?.toDouble(),
+        stop = defaults.stop,
+        numCtx = defaults.numCtx?.toLong(),
+        numPredict = defaults.numPredict?.toLong(),
+        format = defaults.format?.name
+    )
+}
+
+
+
 //@Single
 class SettingsRepository(
     private val dataStore: DataStore<Preferences>,
@@ -78,10 +95,6 @@ class SettingsRepository(
     companion object {
         // Global settings
         val GLOBAL_SETTINGS_KEY = stringPreferencesKey("global_settings")
-
-        // Session settings prefix
-        fun sessionSettingsKey(sessionId: String) =
-            stringPreferencesKey("session_settings_$sessionId")
 
         // Active session
         val ACTIVE_SESSION_KEY = stringPreferencesKey("active_session_id")
@@ -165,27 +178,6 @@ class SettingsRepository(
     suspend fun updateGlobalSettings(update: (GlobalSettings) -> GlobalSettings) {
         val current = getGlobalSettings().first()
         saveGlobalSettings(update(current))
-    }
-
-    // ============= SESSION SETTINGS =============
-
-    suspend fun saveSessionSettings(settings: SessionSettings) {
-        dataStore.edit { preferences ->
-            preferences[sessionSettingsKey(settings.sessionId)] = json.encodeToString(settings)
-        }
-    }
-
-    fun getSessionSettings(sessionId: String): Flow<SessionSettings?> =
-        dataStore.data.map { preferences ->
-            preferences[sessionSettingsKey(sessionId)]?.let {
-                json.decodeFromString<SessionSettings>(it)
-            }
-        }
-
-    suspend fun getSessionSettingsSync(sessionId: String): SessionSettings? {
-        return dataStore.data.first()[sessionSettingsKey(sessionId)]?.let {
-            json.decodeFromString<SessionSettings>(it)
-        }
     }
 
     // ============= LEGACY COMPATIBILITY METHODS =============

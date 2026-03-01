@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -181,7 +182,7 @@ fun AssistantMessageBubble(
                 message.promptEvalCount != null ||
                 message.evalCount != null
 
-    var showThinking by remember { mutableStateOf(false) }
+    var showThinking by remember { mutableStateOf(true) }
     var showDetails by remember { mutableStateOf(false) }
 
     val rotateAnimation = animateFloatAsState(
@@ -234,14 +235,14 @@ fun AssistantMessageBubble(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.fillMaxWidth(0.85f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Markdown(
-                            content = message.thinking ?: "",
+                        MessageMarkdown(
+                            message = message.thinking ?: "",
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -274,6 +275,14 @@ fun AssistantMessageBubble(
             }
         }
     }
+
+
+    LaunchedEffect(message.state) {
+        if (message.state is MessageState.Done && hasDetails) {
+            showThinking = false
+        }
+    }
+
 }
 
 @Composable
@@ -303,8 +312,8 @@ private fun MessageContent(
 
         is MessageState.Generating -> {
             Column {
-                Markdown(
-                    content = message.content.orEmpty(),
+                MessageMarkdown(
+                    message = message.content.orEmpty(),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -356,39 +365,58 @@ private fun MessageContent(
 
         else -> {
             // ADVANCED: Customize Highlights library by defining different theme
-            val isDarkTheme = isSystemInDarkTheme()
-
-            val highlights = remember(isDarkTheme) {
-                Highlights.Builder()
-                    .theme(SyntaxThemes.atom(darkMode = isDarkTheme))
-            }
-
-            Markdown(
-                content = message.content?.takeIf { it.isNotBlank() }
-                    ?: "_No content_",
-                modifier = Modifier.fillMaxWidth(),
-                components = markdownComponents(
-                    codeBlock = {
-                        MarkdownHighlightedCodeBlock(
-                            content = it.content,
-                            node = it.node,
-                            highlightsBuilder = highlights,
-                            showHeader = true
-                        )
-                    },
-                    codeFence = {
-                        MarkdownHighlightedCodeFence(
-                            content = it.content,
-                            node = it.node,
-                            highlightsBuilder = highlights,
-                            showHeader = true
-                        )
-                    },
-                )
+            MessageMarkdown(
+                modifier = Modifier,
+                message = message.content ?: ""
             )
         }
     }
 }
+
+@Composable
+private fun MessageMarkdown(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    val isDarkTheme = isSystemInDarkTheme()
+
+    val highlights = remember(isDarkTheme) {
+        Highlights.Builder()
+            .theme(SyntaxThemes.atom(darkMode = isDarkTheme))
+    }
+
+    SelectionContainer {
+        Markdown(
+            content = message.takeIf { it.isNotBlank() }
+                ?: "_No content_",
+            modifier = modifier.fillMaxWidth(),
+            components = markdownComponents(
+                codeBlock = {
+                    MarkdownHighlightedCodeBlock(
+                        content = it.content,
+                        node = it.node,
+                        highlightsBuilder = highlights,
+                        showHeader = true
+                    )
+                },
+                codeFence = {
+                    MarkdownHighlightedCodeFence(
+                        content = it.content,
+                        node = it.node,
+                        highlightsBuilder = highlights,
+                        showHeader = true
+                    )
+                },
+            ),
+            loading = {
+                CircularProgressIndicator()
+            }
+        )
+    }
+
+
+}
+
 
 @Composable
 private fun MessageMetaRow(
@@ -441,52 +469,6 @@ private fun MessageMetaRow(
         }
     }
 }
-
-
-//    Column(
-//        modifier = modifier.fillMaxWidth(),
-//        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
-//    ) {
-//        // Main row: icon (if any) + bubble
-//        Row(
-//            modifier = Modifier.fillMaxWidth(),
-//            verticalAlignment = Alignment.Top,
-//            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-//        ) {
-//            // Icon for non‑user roles
-//
-//
-//            // Message bubble with wrapping but restricted maximum width constraint
-//            Surface(
-//                shape = RoundedCornerShape(
-//                    topStart = 16.dp,
-//                    topEnd = 16.dp,
-//                    bottomStart = if (isUser) 16.dp else 4.dp,
-//                    bottomEnd = if (isUser) 4.dp else 16.dp
-//                ),
-//                color = if (isUser) MaterialTheme.colorScheme.primaryContainer
-//                else MaterialTheme.colorScheme.surfaceVariant,
-//                tonalElevation = 1.dp,
-//                modifier = Modifier.weight(0.85f, fill = false)
-//            ) {
-//                Column(
-//                    modifier = Modifier.padding(12.dp)
-//                ) {
-//                    // Message state handling
-//
-//                }
-//            }
-//        }
-//
-//        // Metadata row: timestamp, copy, delete, info button, thinking dropdown
-//
-//
-//        // Expandable thinking section
-//
-//
-//        // Expandable generation details
-//
-//    }
 
 
 /**
@@ -559,6 +541,7 @@ private fun formatTimestamp(timestamp: Long): String {
         ""
     }
 }
+
 
 // Example usage of kotlinx.datetime alternative (commented):
 // @OptIn(kotlinx.datetime.ExperimentalDateTimeFormat::class)
