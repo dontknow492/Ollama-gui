@@ -541,6 +541,7 @@ class OllamaRepository(
 
     }
         .catch { e ->
+            Napier.e(e) { ("Error fetching model details for $name: ${e.message}") }
             emit(
                 ModelDetailState.Error(
                     e.message ?: "Failed to fetch model details"

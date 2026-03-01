@@ -27,10 +27,7 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.io.IOException
 import kotlinx.serialization.Serializable
@@ -43,10 +40,29 @@ import java.net.ConnectException
 
 
 class OllamaClient(
-    private val baseUrl: String = "http://localhost:11434",
+    initialUrl: String = "http://localhost:11434",
     private val httpClient: HttpClient
 ) {
     private val jsonSerializer = Json { ignoreUnknownKeys = true }
+    private val _baseUrl =
+        MutableStateFlow(normalizeUrl(initialUrl))
+
+    val baseUrl: StateFlow<String> = _baseUrl.asStateFlow()
+
+
+    private fun normalizeUrl(url: String): String {
+        return try {
+            val built = URLBuilder(url).apply {
+                require(protocol.name == "http" || protocol.name == "https") {
+                    "Only http/https supported"
+                }
+            }.buildString()
+
+            built.trimEnd('/') + "/"
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid base URL")
+        }
+    }
 
     /**
      * Retries the block but immediately rethrows if the exception is a Client Request error (4xx)
@@ -164,13 +180,20 @@ class OllamaClient(
         }
     }
 
+    // update base url if needed
+    fun updateBaseUrl(newUrl: String) {
+        val normalized = normalizeUrl(newUrl)
+        if (_baseUrl.value == normalized) return
+        _baseUrl.value = normalized
+    }
+
     // -------------------------------------------------------------------------
     // API METHODS
     // -------------------------------------------------------------------------
 
     suspend fun isOllamaRunning(): Boolean {
         return try {
-            val response = httpClient.get("$baseUrl/api/version")
+            val response = httpClient.get("${baseUrl.value}/api/version")
             response.status.value in 200..299
         } catch (e: Exception) {
             false
@@ -184,7 +207,7 @@ class OllamaClient(
         while (currentCoroutineContext().isActive) {
 
             val isRunning = try {
-                val response = httpClient.get("$baseUrl/api/version")
+                val response = httpClient.get("${baseUrl.value}/api/version")
                 response.status.value in 200..299
             } catch (e: Exception) {
                 false
@@ -206,7 +229,7 @@ class OllamaClient(
 
             val models = try {
                 safeApiCall<ListModelsResponse> {
-                    httpClient.get("$baseUrl/api/tags")
+                    httpClient.get("${baseUrl.value}/api/tags")
                 }
             } catch (e: Exception) {
                 println("Failed to fetch models: ${e.message}")
@@ -262,7 +285,7 @@ class OllamaClient(
 
         retryWithBackoff(times = retries) {
             try {
-                val response = httpClient.post("$baseUrl/api/pull") {
+                val response = httpClient.post("${baseUrl.value}/api/pull") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
                 }
@@ -334,7 +357,7 @@ class OllamaClient(
 
         retryWithBackoff(times = retries) {
             try {
-                val response = httpClient.post("$baseUrl/api/push") {
+                val response = httpClient.post("${baseUrl.value}/api/push") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
                 }
@@ -365,7 +388,7 @@ class OllamaClient(
      */
     suspend fun ollamaVersion(): VersionResponse {
         return safeApiCall {
-            httpClient.get("$baseUrl/api/version")
+            httpClient.get("${baseUrl.value}/api/version")
         }
     }
 
@@ -430,7 +453,8 @@ class OllamaClient(
         )
 
         try {
-            val response = httpClient.post("$baseUrl/api/chat") {
+            val response = httpClient.post {
+                apiUrl("chat")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -520,7 +544,8 @@ class OllamaClient(
         )
 
         return safeApiCall {
-            httpClient.post("$baseUrl/api/chat") {
+            httpClient.post {
+                apiUrl("chat")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -603,7 +628,8 @@ class OllamaClient(
         )
 
         return safeApiCall {
-            httpClient.post("$baseUrl/api/generate") {
+            httpClient.post {
+                apiUrl("generate")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -682,7 +708,8 @@ class OllamaClient(
         )
 
         try {
-            val response = httpClient.post("$baseUrl/api/response") {
+            val response = httpClient.post {
+                apiUrl("generate")   // ✅ correct endpoint
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -726,7 +753,9 @@ class OllamaClient(
      */
     suspend fun listModels(): ListModelsResponse {
         return safeApiCall {
-            httpClient.get("$baseUrl/api/tags")
+            httpClient.get {
+                apiUrl("tags")
+            }
         }
     }
 
@@ -753,7 +782,11 @@ class OllamaClient(
      */
     suspend fun showModel(name: String, verbose: Boolean = false): ShowModelResponse {
         return safeApiCall {
-            httpClient.post("$baseUrl/api/show") {
+            httpClient.post {
+                url {
+                    takeFrom(baseUrl.value)
+                    appendPathSegments("api", "show")
+                }
                 contentType(ContentType.Application.Json)
                 setBody(ShowModelRequest(name, verbose))
             }
@@ -779,7 +812,12 @@ class OllamaClient(
      */
     suspend fun listRunningModels(): ListRunningModelsResponse {
         return safeApiCall {
-            httpClient.get("$baseUrl/api/ps")
+            httpClient.get {
+                url {
+                    takeFrom(baseUrl.value)
+                    appendPathSegments("api", "ps")
+                }
+            }
         }
     }
 
@@ -805,8 +843,15 @@ class OllamaClient(
      * }
      */
     suspend fun embed(model: String, input: String): EmbedResponse {
+        require(model.isNotBlank()) { "Model name cannot be empty" }
+        require(input.isNotBlank()) { "Input cannot be empty" }
+
         return safeApiCall {
-            httpClient.post("$baseUrl/api/embed") {
+            httpClient.post {
+                url {
+                    takeFrom(baseUrl.value)
+                    appendPathSegments("api", "embed")
+                }
                 contentType(ContentType.Application.Json)
                 setBody(EmbedRequest(model, input))
             }
@@ -867,7 +912,7 @@ class OllamaClient(
         // Actually, best practice: throw on error, return true on success.
 
         try {
-            val response = httpClient.post("$baseUrl/api/create") {
+            val response = httpClient.post("${baseUrl.value}/api/create") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -922,7 +967,7 @@ class OllamaClient(
         val request = CopyModelRequest(source, destination)
 
         try {
-            val response = httpClient.post("$baseUrl/api/copy") {
+            val response = httpClient.post("${baseUrl.value}/api/copy") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -955,7 +1000,8 @@ class OllamaClient(
      */
     suspend fun deleteModel(name: String): Boolean {
         try {
-            val response = httpClient.delete("$baseUrl/api/delete") {
+
+            val response = httpClient.delete("${baseUrl.value}api/delete") {
                 contentType(ContentType.Application.Json)
                 setBody(DeleteModelRequest(name))
             }
@@ -963,6 +1009,14 @@ class OllamaClient(
             return true
         } catch (e: Exception) {
             throw mapToOllamaException(e)
+        }
+    }
+
+    private fun HttpRequestBuilder.apiUrl(vararg segments: String) {
+        url {
+            takeFrom(baseUrl.value)
+            appendPathSegments("api")
+            appendPathSegments(*segments)
         }
     }
 }
@@ -1006,3 +1060,5 @@ data class PushModelProgress(
     val message: String? = null,
     val progress: Float? = null
 )
+
+
