@@ -1,7 +1,3 @@
-creaet readme.md for this as fix
-Below is a ready\-to\-use `README.md` for the Kotlin Multiplatform Ollama SDK project. It includes description, features, directory layout, tech stack, installation and usage examples, screenshots section, links, and a thanks\-to section.
-
-```markdown
 # Ollama KMP SDK
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/your-repo/actions) [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.x-blue)](https://kotlinlang.org/) [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
