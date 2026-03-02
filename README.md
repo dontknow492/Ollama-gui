@@ -65,32 +65,14 @@ Example layout (KMP convention):
 
 Add the SDK to your multiplatform project. Example using Gradle Kotlin DSL:
 
-1. Add repository (if publishing to MavenCentral/GitHub Packages, use that repo):
-
-```kotlin
-repositories {
-    mavenCentral()
-    maven("https://maven.pkg.github.com/yourusername/your-repo") // if using GitHub Packages
-}
-```
-
-2. Add dependency to your KMP targets (use the real group/artifact/version from your published package):
-
-```kotlin
-kotlin {
-    // configure targets...
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation("com.yourorg:ollama-kmp-sdk:0.1.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.5.0")
-                implementation("io.ktor:ktor-client-core:2.3.0")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.0")
-            }
-        }
-    }
-}
-```
+1. Add the repository where your SDK is published (e.g. Maven Central, JitPack, or GitHub Packages):
+    ```bash
+    gitclone "https://github.com/dontknow492/Ollama-gui.git"
+    cd Ollama-gui
+    git checkout main
+    ```
+2. gradlew build
+    ```gradlew build```
 
 Platform specific HTTP client engines (add to jvmMain, jsMain, etc.):
 
@@ -140,15 +122,25 @@ client.streamGenerate(request).collect { chunk ->
 - `timeout` — request timeout configuration per platform
 - `httpClientFactory` — inject platform HTTP client if you need custom config
 
-(Check the SDK docs in `docs/` or KDoc for full config API.)
+(Check the SDK docs in `docs/` or KDoc for full config API.) TODO
 
 ## Screenshots
 
 Add runtime screenshots or examples here. Example:
 
-![Example usage screenshot](assets/screenshot-usage.png)
+![Desktop view](assets/screenshots/home_desktop.png)
+![Mobile view](assets/screenshots/home_android.png)
 
-If you publish screenshots, place them in the repository under `assets/` or `docs/assets/` and reference them using the relative path.
+
+## Future plans
+- Authorization support (API keys, tokens)
+- More request/response types (e.g. embeddings, fine-tuning)
+- Improved error handling and retry logic
+- Additional platform support (e.g. iOS, WebAssembly)
+- Better documentation and examples
+- Docs site with API reference and guides
+- Upload files for generation context
+- Exporting messages in a format compatible with Ollama CLI
 
 ## Contributing
 
