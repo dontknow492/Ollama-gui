@@ -2,7 +2,7 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/your-repo/actions) [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.x-blue)](https://kotlinlang.org/) [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-A Kotlin Multiplatform SDK for interacting with Ollama models. Designed to work on Kotlin/JVM, Kotlin/Native (macOS, Linux), and Kotlin/JS targets — providing a common, idiomatic Kotlin API for requests, streaming, and serialization.
+A Kotlin Multiplatform SDK/GUI for interacting with Ollama models. Designed to work on Kotlin/JVM, Kotlin/Native (macOS, Linux), and Kotlin/JS targets — providing a common, idiomatic Kotlin API for requests, streaming, and serialization.
 
 ## Table of contents
 
@@ -128,8 +128,13 @@ client.streamGenerate(request).collect { chunk ->
 
 Add runtime screenshots or examples here. Example:
 
-![Desktop view](assets/screenshots/home_desktop.png)
-![Mobile view](assets/screenshots/home_android.png)
+<p align="center">
+  <img src="assets/screenshots/home_desktop.png" alt="Desktop View" width="75%" />
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/home_android.png" alt="Mobile View" width="300" />
+</p>
 
 
 ## Future plans
