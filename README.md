@@ -260,14 +260,3 @@ MIT License — see `LICENSE` for details.
 * Ollama
 
 ---
-
-If you'd like, I can now:
-
-* Make it more product-marketing focused
-* Make it enterprise/professional tone
-* Add badges & GitHub release section
-* Add architecture diagram section
-* Add contribution guidelines template
-* Add CI/CD and versioning section
-
-Just tell me the direction you want 🚀
