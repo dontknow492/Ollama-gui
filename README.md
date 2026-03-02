@@ -1,84 +1,105 @@
 # Ollama GUI (Kotlin Multiplatform)
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/your-repo/actions)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/dontknow492/Ollama-gui/actions)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.x-blue)](https://kotlinlang.org/)
 [![Compose](https://img.shields.io/badge/Compose-Multiplatform-orange)](https://www.jetbrains.com/lp/compose-multiplatform/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-A modern **Ollama Desktop & Android GUI** built with **Kotlin Multiplatform + Compose**.
+A modern **Desktop & Android GUI for Ollama**, built with **Kotlin Multiplatform + Compose**.
 
-Designed for local-first AI workflows, this application provides a clean, responsive interface to interact with Ollama models — supporting chat, streaming responses, model management, and persistent sessions.
-
----
-
-## Overview
-
-Ollama GUI is a cross-platform application that runs on:
-
-* 🖥️ Windows (MSI)
-* 🍎 macOS (DMG)
-* 🐧 Linux (DEB)
-* 📱 Android
-
-It connects to a local or remote Ollama server and offers a fast, structured UI for model interaction, chat history, and generation workflows.
-
-This is not just a client wrapper — it’s a full GUI experience built on a shared multiplatform architecture.
+Designed for local-first AI workflows, this application provides a fast, clean, and privacy-focused interface to interact with Ollama models — supporting chat, streaming responses, model management, and persistent sessions.
 
 ---
 
-## Features
+# 🚀 What Is This?
 
-### Core AI Interaction
+Ollama GUI is a **cross-platform native application** that connects to an **Ollama server** and provides a full graphical interface for:
 
-* Chat with Ollama models
-* Real-time streaming responses
-* Model switching
-* Session-based conversations
-* Markdown rendering with syntax highlighting
-* Code block formatting
+- Running LLM conversations
+- Managing models
+- Streaming responses in real time
+- Persisting chat sessions locally
 
-### Desktop Experience
+⚠️ **Important:**  
+This application does not bundle Ollama internally.  
+You must install and run Ollama separately.
 
-* Native installers (MSI / DMG / DEB)
-* System window integration
-* Optimized runtime image (jlink)
-* Persistent local database (SQLDelight)
-
-### Android Experience
-
-* Material 3 UI
-* Adaptive layout
-* Lifecycle-aware state management
-* Paging support for chat history
-
-### Architecture Highlights
-
-* Kotlin Multiplatform (shared core logic)
-* Compose Multiplatform UI
-* Coroutines + Flow state management
-* SQLDelight database
-* Koin dependency injection
-* Ktor networking layer
+The GUI communicates with the Ollama server over HTTP.
 
 ---
 
-## Tech Stack
+# 🖥 Supported Platforms
 
-* Kotlin Multiplatform
-* Compose Multiplatform
-* Android SDK
-* SQLDelight
-* Ktor
-* kotlinx.serialization
-* Coroutines + Flow
-* Koin
-* Napier (logging)
+- 🪟 Windows (MSI installer)
+- 🍎 macOS (DMG installer)
+- 🐧 Linux (DEB package)
+- 📱 Android
+
+All powered by a shared Kotlin Multiplatform architecture.
 
 ---
 
-## Project Structure
+# 🧠 Core Features
+
+## AI Interaction
+
+- Chat with any installed Ollama model
+- Real-time streaming token output
+- Markdown rendering with syntax highlighting
+- Code block formatting
+- Session-based conversation history
+- Model switching per chat
+
+## Model Management
+
+- View installed models
+- Download new models directly from inside the app
+- Delete models
+- Pull updates
+- Refresh model list
+
+## Desktop Experience
+
+- Native OS installers (MSI / DMG / DEB)
+- Optimized runtime image via `jlink`
+- Window icon integration
+- Local persistent database (SQLDelight)
+
+## Android Experience
+
+- Material 3 design
+- Adaptive layouts
+- Lifecycle-aware state management
+- Paging support for chat history
+
+---
+
+# 🔐 Privacy & Local-First Design
+
+This application is **privacy-focused**:
+
+- No cloud dependency required
+- No telemetry
+- No data collection
+- Chats stored locally in SQLDelight database
+- Communicates only with your configured Ollama server
+
+By default, it connects to:
 
 ```
+
+[http://localhost:11434](http://localhost:11434)
+
+```
+
+You may configure a remote server if desired.
+
+---
+
+# 🧩 Architecture
+
+```
+
 .
 ├── ollama-core          // Shared networking + business logic
 ├── ollama-gui           // Compose Multiplatform application
@@ -86,21 +107,81 @@ This is not just a client wrapper — it’s a full GUI experience built on a sh
 │   ├── desktopMain
 │   └── commonMain
 ├── build.gradle.kts
-├── settings.gradle.kts
-└── README.md
-```
+└── settings.gradle.kts
 
-Architecture separation:
+````
 
-* `commonMain` → shared UI state, models, repository
-* `androidMain` → Android-specific integrations
-* `desktopMain` → Desktop runtime & packaging config
+### Layer Breakdown
+
+**commonMain**
+- Shared UI state
+- Repository layer
+- ViewModels
+- Models & DTOs
+
+**androidMain**
+- Android-specific integrations
+- Lifecycle bindings
+- Platform drivers
+
+**desktopMain**
+- Desktop runtime configuration
+- Packaging configuration
+- Window management
 
 ---
 
-## Installation & Build
+# 🛠 Ollama Setup (Required)
 
-### Clone Repository
+Before running this GUI, you must install Ollama.
+
+## 1️⃣ Install Ollama
+
+Visit:
+
+👉 https://ollama.ai
+
+Download and install for your OS.
+
+---
+
+## 2️⃣ Start Ollama Server
+
+After installation, run:
+
+```bash
+ollama serve
+````
+
+This starts the server at:
+
+```
+http://localhost:11434
+```
+
+You can verify it's running:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+---
+
+## 3️⃣ Download a Model (CLI Method)
+
+Example:
+
+```bash
+ollama pull llama3
+```
+
+Or download directly inside the GUI (recommended).
+
+---
+
+# 💻 Running The GUI
+
+## Clone Repository
 
 ```bash
 git clone https://github.com/dontknow492/Ollama-gui.git
@@ -109,7 +190,7 @@ cd Ollama-gui
 
 ---
 
-## Run Desktop (Development)
+## Run Desktop (Development Mode)
 
 ```bash
 ./gradlew run
@@ -117,7 +198,7 @@ cd Ollama-gui
 
 ---
 
-## Build Desktop Installer
+## Build Desktop Installers
 
 ### Windows
 
@@ -137,7 +218,7 @@ cd Ollama-gui
 ./gradlew packageDeb
 ```
 
-Output location:
+Output:
 
 ```
 app/build/compose/binaries/main/
@@ -145,7 +226,7 @@ app/build/compose/binaries/main/
 
 ---
 
-## Build Android
+# 📱 Android Build
 
 ### Debug APK
 
@@ -165,7 +246,7 @@ app/build/compose/binaries/main/
 ./gradlew bundleRelease
 ```
 
-Output location:
+Output:
 
 ```
 app/build/outputs/
@@ -173,7 +254,7 @@ app/build/outputs/
 
 ---
 
-## Configuration
+# ⚙ Server Configuration
 
 By default, the app connects to:
 
@@ -181,18 +262,31 @@ By default, the app connects to:
 http://localhost:11434
 ```
 
-To change the endpoint:
+You may:
 
 * Modify base URL in configuration layer
-* Or inject via environment config (recommended for production)
-
-Future improvement: in-app server configuration UI.
+* Inject environment-based config
+* Future: Configure inside app settings UI
 
 ---
 
-## Screenshots
+# 📦 Tech Stack
 
-Add your screenshots in:
+* Kotlin Multiplatform
+* Compose Multiplatform
+* Android SDK
+* SQLDelight
+* Ktor
+* kotlinx.serialization
+* Coroutines + Flow
+* Koin
+* Napier (logging)
+
+---
+
+# 📸 Screenshots
+
+Place screenshots in:
 
 ```
 assets/screenshots/
@@ -207,50 +301,39 @@ assets/screenshots/android_chat.png
 
 ---
 
-## Roadmap
+# 🛣 Roadmap
 
-* Model pull / management UI
+* In-app server configuration screen
+* Auto Ollama detection
+* Embedded Ollama runtime (optional future)
 * File upload support
-* Export chat history
+* Chat export (Markdown / JSON)
+* Multi-server support
 * Theming system
-* Multi-server configuration
-* Plugin system
-* Performance profiling mode
+* Plugin architecture
 * Windows ARM support
 * Auto-update mechanism
 
 ---
 
-## Why This Project?
-
-* Fully local AI workflow
-* Cross-platform from one codebase
-* Modern Compose UI
-* Clean architecture
-* Designed for extension
-
-This project demonstrates production-ready Kotlin Multiplatform desktop engineering — not just a simple sample.
-
----
-
-## Contributing
+# 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Follow Kotlin + Compose conventions
-4. Submit a PR to `main`
+4. Submit PR to `main`
 
-Feature proposals and architecture discussions are welcome.
-
----
-
-## License
-
-MIT License — see `LICENSE` for details.
+Architecture discussions and feature proposals are welcome.
 
 ---
 
-## Acknowledgements
+# 📜 License
+
+MIT License — see `LICENSE`.
+
+---
+
+# 🙌 Acknowledgements
 
 * Kotlin Multiplatform
 * Compose Multiplatform
@@ -260,3 +343,16 @@ MIT License — see `LICENSE` for details.
 * Ollama
 
 ---
+
+# ⭐ Why This Project Matters
+
+Most Ollama usage today is CLI or browser-based.
+
+This project provides:
+
+* Native desktop experience
+* Local-first architecture
+* Production-grade Kotlin Multiplatform design
+* Clean, extensible codebase
+
+Built for developers who want full control over their local AI workflows.
