@@ -15,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+//import androidx.lifecycle.compose.collectAsState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.cash.paging.compose.itemKey
@@ -25,6 +25,7 @@ import com.ghost.ollama.gui.TagEntity
 import com.ghost.ollama.gui.models.rememberPlatformConfiguration
 import com.ghost.ollama.gui.repository.ModelWithTags
 import com.ghost.ollama.gui.viewmodel.download.*
+import io.github.aakira.napier.Napier
 import ollama_kmp.ollama_sample.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.vectorResource
@@ -36,7 +37,7 @@ fun DownloadScreen(
     viewModel: DownloadViewModel = koinViewModel(),
     onBack: () -> Unit,
 ) {
-    val uiState by viewModel.state.collectAsStateWithLifecycle()
+    val uiState by viewModel.state.collectAsState()
     val sideEffects = viewModel.sideEffects
     val snackbarHostState = remember { SnackbarHostState() }
     val models = viewModel.pagedModels.collectAsLazyPagingItems()
@@ -44,9 +45,20 @@ fun DownloadScreen(
     LaunchedEffect(sideEffects) {
         sideEffects.collect { effect ->
             val message = when (effect) {
-                is DownloadSideEffect.ShowError -> "❌ ${effect.message}"
-                is DownloadSideEffect.ShowSuccess -> "✅ ${effect.message}"
-                is DownloadSideEffect.ShowSnackbar -> effect.message
+                is DownloadSideEffect.ShowError -> {
+                    Napier.e("Download error: ${effect.message}")
+                    "❌ ${effect.message}"
+                }
+
+                is DownloadSideEffect.ShowSuccess -> {
+                    Napier.d("Download success: ${effect.message}")
+                    "✅ ${effect.message}"
+                }
+
+                is DownloadSideEffect.ShowSnackbar -> {
+                    Napier.d("Download snack: ${effect.message}")
+                    effect.message
+                }
             }
             snackbarHostState.showSnackbar(message)
         }
@@ -112,9 +124,9 @@ fun DownloadScreenContent(
         }
     ) { paddingValues ->
         Row(
-             modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
             Column(modifier = Modifier.weight(3f)) {
                 // Top bar with search and filter
@@ -179,25 +191,25 @@ fun DownloadScreenContent(
                 }
             }
 
-            if(isExpanded){
+            if (isExpanded) {
                 AnimatedVisibility(
-                visible = showDownloadsSheet && uiState.activeDownloads.isNotEmpty(),
+                    visible = showDownloadsSheet && uiState.activeDownloads.isNotEmpty(),
 //                    modifier = Modifier.weight(1f)
-            ) {
+                ) {
 
-                HorizontalDivider(
-                    Modifier
-                        .fillMaxHeight()
-                        .width(1.dp), DividerDefaults.Thickness, DividerDefaults.color
-                )
+                    HorizontalDivider(
+                        Modifier
+                            .fillMaxHeight()
+                            .width(1.dp), DividerDefaults.Thickness, DividerDefaults.color
+                    )
 
-                DownloadsPanel(
-                    downloads = uiState.activeDownloads,
-                    onEvent = onEvent,
-                    onClose = { showDownloadsSheet = false },
-                    modifier = Modifier.width(340.dp)
-                )
-            }
+                    DownloadsPanel(
+                        downloads = uiState.activeDownloads,
+                        onEvent = onEvent,
+                        onClose = { showDownloadsSheet = false },
+                        modifier = Modifier.width(340.dp)
+                    )
+                }
             }
 
         }
@@ -620,18 +632,35 @@ fun ActiveDownloadItem(
             ) {
                 Spacer(Modifier.height(12.dp))
 
+                val progress = calculateProgress(download.completed, download.total)
+
                 LinearProgressIndicator(
-                    progress = { download.progress },
+                    progress = { progress },
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
 
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+
                     Text(
-                        text = "${(download.progress * 100).toInt()}%",
+                        text = if (download.total > 0) {
+                            "${(progress * 100).toInt()}%"
+                        } else {
+                            "Preparing..."
+                        },
                         style = MaterialTheme.typography.labelSmall
                     )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    if (download.total > 0) {
+                        Text(
+                            text = "${download.completed.toReadableSize()} / ${download.total.toReadableSize()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     Spacer(Modifier.weight(1f))
 
@@ -639,7 +668,9 @@ fun ActiveDownloadItem(
                         Text(
                             text = it,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -701,12 +732,19 @@ private fun StatusChip(status: PullStatus) {
         PullStatus.error -> MaterialTheme.colorScheme.error
     }
 
+    val text = when (status) {
+        PullStatus.pulling -> "DOWNLOADING"
+        PullStatus.queued -> "PAUSED"
+        PullStatus.done -> "COMPLETED"
+        PullStatus.error -> "FAILED"
+    }
+
     Surface(
         shape = RoundedCornerShape(50),
         color = color.copy(alpha = 0.15f)
     ) {
         Text(
-            text = status.name.uppercase(),
+            text = text,
             color = color,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -830,4 +868,24 @@ fun TagCard(
             }
         }
     }
+}
+
+
+private fun Long.toReadableSize(): String {
+    val kb = 1024.0
+    val mb = kb * 1024
+    val gb = mb * 1024
+
+    return when {
+        this >= gb -> "%.2f GB".format(this / gb)
+        this >= mb -> "%.2f MB".format(this / mb)
+        this >= kb -> "%.2f KB".format(this / kb)
+        else -> "$this B"
+    }
+}
+
+private fun calculateProgress(completed: Long, total: Long): Float {
+    return if (total > 0L) {
+        (completed.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+    } else 0f
 }

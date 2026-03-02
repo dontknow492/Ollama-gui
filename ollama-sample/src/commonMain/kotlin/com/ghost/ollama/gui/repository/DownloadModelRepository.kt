@@ -6,11 +6,13 @@ import com.ghost.ollama.OllamaClient
 import com.ghost.ollama.PullModelProgress
 import com.ghost.ollama.gui.EntityQueries
 import com.ghost.ollama.gui.ModelEntity
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 
 
@@ -54,12 +56,13 @@ class DownloadModelRepository(
     fun pullModel(name: String): Flow<PullModelProgress> {
         return ollamaClient.pullModel(name)
             .onStart {
-                // Optional: Mark model as "Downloading" in DB
-                // queries.updateDownloadStatus(name, isDownloading = true)
+                Napier.d("📡 Repository: pullModel started for $name")
+            }
+            .onEach {
+                Napier.d("📊 Repository: received progress for $name -> $it")
             }
             .onCompletion { cause ->
-                // Optional: Mark as "Downloaded" or "Error"
-                // if (cause == null) queries.updateDownloadStatus(name, isDownloaded = true)
+                Napier.d("📡 Repository: pullModel completed for $name cause=$cause")
             }.flowOn(ioDispatcher)
     }
 

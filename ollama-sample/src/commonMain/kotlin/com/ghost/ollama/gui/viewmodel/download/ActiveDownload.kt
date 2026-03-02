@@ -8,5 +8,7 @@ data class ActiveDownload(
     val modelEntity: ModelEntity, // Full SQLDelight entity for UI display
     val status: PullStatus,
     val progress: Float = 0f,
+    val total: Long = 0L,
+    val completed: Long = 0L,
     val message: String? = null
 )

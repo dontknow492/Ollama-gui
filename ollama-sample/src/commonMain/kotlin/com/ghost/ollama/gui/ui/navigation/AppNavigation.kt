@@ -8,6 +8,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ghost.ollama.gui.ui.`interface`.DownloadScreen
 import com.ghost.ollama.gui.ui.`interface`.chat.ChatScreen
+import com.ghost.ollama.gui.viewmodel.download.DownloadViewModel
+import org.koin.compose.viewmodel.koinViewModel
 
 object Routes {
     const val CHAT = "chat"
@@ -19,6 +21,7 @@ fun NavigationRoute(
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
+    val downloadViewModel: DownloadViewModel = koinViewModel()
 
     NavHost(
         navController = navController,
@@ -38,6 +41,7 @@ fun NavigationRoute(
 
         composable(Routes.DOWNLOAD) {
             DownloadScreen(
+                viewModel = downloadViewModel,
                 onBack = {
                     navController.popBackStack()
                 }

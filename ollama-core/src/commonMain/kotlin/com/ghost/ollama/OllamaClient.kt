@@ -207,7 +207,9 @@ class OllamaClient(
         while (currentCoroutineContext().isActive) {
 
             val isRunning = try {
-                val response = httpClient.get("${baseUrl.value}/api/version")
+                val response = httpClient.get {
+                    apiUrl("version")
+                }
                 response.status.value in 200..299
             } catch (e: Exception) {
                 false
@@ -229,7 +231,9 @@ class OllamaClient(
 
             val models = try {
                 safeApiCall<ListModelsResponse> {
-                    httpClient.get("${baseUrl.value}/api/tags")
+                    httpClient.get {
+                        apiUrl("tags")
+                    }
                 }
             } catch (e: Exception) {
                 println("Failed to fetch models: ${e.message}")
@@ -280,31 +284,38 @@ class OllamaClient(
         insecure: Boolean = false,
         stream: Boolean = true,
         retries: Int = 3
-    ): Flow<PullModelProgress> = flow {
+    ): Flow<PullModelProgress> = channelFlow { // 1. Use channelFlow instead of flow
         val request = PullModelRequest(model, insecure, stream)
 
         retryWithBackoff(times = retries) {
             try {
-                val response = httpClient.post("${baseUrl.value}/api/pull") {
+                httpClient.preparePost {
+                    apiUrl("pull")
                     contentType(ContentType.Application.Json)
                     setBody(request)
-                }
+                }.execute { httpResponse ->
 
-                ensureSuccess(response)
+                    ensureSuccess(httpResponse)
 
-                val channel = response.bodyAsChannel()
-                while (!channel.isClosedForRead && currentCoroutineContext().isActive) {
-                    val line = channel.readLine() ?: break
-                    if (line.isBlank()) continue
+                    val channel = httpResponse.bodyAsChannel()
 
-                    try {
-                        val progress = jsonSerializer.decodeFromString<PullModelProgress>(line)
-                        emit(progress)
-                    } catch (e: SerializationException) {
-                        throw OllamaSerializationException("Failed to parse pull progress: $line", e)
+                    while (!channel.isClosedForRead && currentCoroutineContext().isActive) {
+                        val line = channel.readLine() ?: break
+                        if (line.isBlank()) continue
+
+                        try {
+                            val progress = jsonSerializer.decodeFromString<PullModelProgress>(line)
+                            send(progress) // 2. Use send() instead of emit()
+                        } catch (e: SerializationException) {
+                            throw OllamaSerializationException("Failed to parse pull progress: $line", e)
+                        }
                     }
                 }
+            } catch (e: CancellationException) {
+                // 3. ALWAYS rethrow CancellationException so coroutines can cancel properly
+                throw e
             } catch (e: Exception) {
+                // 4. Only map non-cancellation exceptions
                 throw mapToOllamaException(e)
             }
         }
@@ -388,7 +399,10 @@ class OllamaClient(
      */
     suspend fun ollamaVersion(): VersionResponse {
         return safeApiCall {
-            httpClient.get("${baseUrl.value}/api/version")
+            httpClient.get {
+                contentType(ContentType.Application.Json)
+                apiUrl("version")
+            }
         }
     }
 
@@ -912,7 +926,8 @@ class OllamaClient(
         // Actually, best practice: throw on error, return true on success.
 
         try {
-            val response = httpClient.post("${baseUrl.value}/api/create") {
+            val response = httpClient.post {
+                apiUrl("create")
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
@@ -1001,7 +1016,8 @@ class OllamaClient(
     suspend fun deleteModel(name: String): Boolean {
         try {
 
-            val response = httpClient.delete("${baseUrl.value}api/delete") {
+            val response = httpClient.delete {
+                apiUrl("delete")
                 contentType(ContentType.Application.Json)
                 setBody(DeleteModelRequest(name))
             }
@@ -1041,9 +1057,11 @@ data class PullModelRequest(
 
 @Serializable
 data class PullModelProgress(
-    val status: PullStatus,
-    val message: String? = null,
-    val progress: Float? = null
+    val status: String? = null,
+    val progress: Float? = null,
+    val total: Long? = null,
+    val completed: Long? = null,
+    val message: String? = null
 )
 
 @Serializable
@@ -1056,7 +1074,7 @@ data class PushModelRequest(
 
 @Serializable
 data class PushModelProgress(
-    val status: PushStatus,
+    val status: PullStatus,
     val message: String? = null,
     val progress: Float? = null
 )

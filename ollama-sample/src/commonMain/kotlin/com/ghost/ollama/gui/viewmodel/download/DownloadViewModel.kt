@@ -8,6 +8,7 @@ import com.ghost.ollama.gui.ModelEntity
 import com.ghost.ollama.gui.models.DatabasePopulator
 import com.ghost.ollama.gui.repository.DownloadModelRepository
 import com.ghost.ollama.gui.repository.ModelWithTags
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -37,7 +38,6 @@ class DownloadViewModel(
             repository.getModelsPaged(search, capability)
         }
         .cachedIn(viewModelScope)
-
 
 
     // Combine states into one UI state
@@ -73,6 +73,7 @@ class DownloadViewModel(
             try {
                 databasePopulator.populateIfEmpty()
             } catch (e: Exception) {
+                Napier.e("Failed to populate database: ${e.message}", e)
                 _sideEffects.send(DownloadSideEffect.ShowError("Failed to fetch models: ${e.message}"))
             }
         }
@@ -101,43 +102,106 @@ class DownloadViewModel(
     }
 
     private fun startDownload(tag: String, modelEntity: ModelEntity) {
-        if (downloadJobs[tag]?.isActive == true) return
+        Napier.d("🚀 startDownload called for tag=$tag")
 
-        _activeDownloads.update { it + (tag to ActiveDownload(tag, modelEntity, PullStatus.pulling)) }
+        if (downloadJobs[tag]?.isActive == true) {
+            Napier.d("⚠️ Download already active for $tag")
+            return
+        }
+
+        _activeDownloads.update {
+            Napier.d("📥 Adding $tag to activeDownloads (status=pulling)")
+            it + (tag to ActiveDownload(tag, modelEntity, PullStatus.pulling))
+        }
 
         val job = viewModelScope.launch {
+
+            Napier.d("🧵 Coroutine launched for $tag")
+
             try {
-                repository.pullModel(tag).collect { progressUpdate ->
-                    _activeDownloads.update { currentMap ->
-                        val existing = currentMap[tag] ?: return@update currentMap
-                        val updated = existing.copy(
-                            status = progressUpdate.status,
-                            progress = progressUpdate.progress ?: existing.progress,
-                            message = progressUpdate.message
-                        )
-                        currentMap + (tag to updated)
+                repository.pullModel(tag)
+                    .onStart {
+                        Napier.d("🔄 pullModel flow started for $tag")
                     }
-                }
+                    .onCompletion { cause ->
+                        if (cause == null) {
+                            Napier.d("✅ pullModel flow completed normally for $tag")
+                        } else {
+                            Napier.e("❌ pullModel flow completed with error for $tag: ${cause.message}", cause)
+                        }
+                    }
+                    .collect { progressUpdate ->
+
+                        Napier.d(
+                            """
+                        📡 Progress update for $tag
+                        status=${progressUpdate.status}
+                        progress=${progressUpdate.progress}
+                        message=${progressUpdate.message}
+                        """.trimIndent()
+                        )
+
+                        _activeDownloads.update { currentMap ->
+                            val existing = currentMap[tag]
+
+                            if (existing == null) {
+                                Napier.w("⚠️ No existing download entry for $tag while updating")
+                                return@update currentMap
+                            }
+
+                            val updated = existing.copy(
+                                status = progressUpdate.status?.toPullStatus() ?: existing.status,
+                                progress = progressUpdate.progress ?: existing.progress,
+                                message = progressUpdate.message,
+                                total = progressUpdate.total ?: existing.total,
+                                completed = progressUpdate.completed ?: existing.completed
+                            )
+
+                            Napier.d("📝 Updating state for $tag -> status=${updated.status}, progress=${updated.progress}")
+
+                            currentMap + (tag to updated)
+                        }
+                    }
+
+                Napier.d("🎉 Marking $tag as done")
 
                 _activeDownloads.update { currentMap ->
                     val existing = currentMap[tag] ?: return@update currentMap
-                    currentMap + (tag to existing.copy(status = PullStatus.done, progress = 1f, message = "Done"))
+                    currentMap + (
+                            tag to existing.copy(
+                                status = PullStatus.done,
+                                progress = 1f,
+                                message = "Done"
+                            )
+                            )
                 }
 
-
-                _sideEffects.send(DownloadSideEffect.ShowSuccess("Successfully downloaded $tag"))
+                Napier.d("📤 Sending success side effect for $tag")
+                _sideEffects.send(
+                    DownloadSideEffect.ShowSuccess("Successfully downloaded $tag")
+                )
 
             } catch (e: CancellationException) {
-                // Expected when user clicks 'Pause' or 'Cancel'
+                Napier.w("⏸️ Download cancelled for $tag")
                 throw e
             } catch (e: Exception) {
-                // Network error handling
+                Napier.e("💥 Download failed for $tag: ${e.message}", e)
+
                 _activeDownloads.update { currentMap ->
                     val existing = currentMap[tag] ?: return@update currentMap
-                    currentMap + (tag to existing.copy(status = PullStatus.error, message = e.message))
+                    currentMap + (
+                            tag to existing.copy(
+                                status = PullStatus.error,
+                                message = e.message
+                            )
+                            )
                 }
-                _sideEffects.send(DownloadSideEffect.ShowError("Download failed: ${e.message}"))
+
+                _sideEffects.send(
+                    DownloadSideEffect.ShowError("Download failed: ${e.message}")
+                )
             } finally {
+                Napier.d("🧹 Cleaning up job for $tag")
                 downloadJobs.remove(tag)
             }
         }
@@ -146,26 +210,120 @@ class DownloadViewModel(
     }
 
     private fun resumeDownload(tag: String) {
-        // We already have the ModelEntity in our state, so we reuse it
-        _activeDownloads.value[tag]?.modelEntity?.let { startDownload(tag, it) }
+        Napier.d("▶️ resumeDownload called for $tag")
+
+        val existing = _activeDownloads.value[tag]
+
+        if (existing == null) {
+            Napier.w("⚠️ resumeDownload: No active download entry found for $tag")
+            return
+        }
+
+        if (downloadJobs[tag]?.isActive == true) {
+            Napier.w("⚠️ resumeDownload: Job already active for $tag")
+            return
+        }
+
+        Napier.d("🔁 Restarting download for $tag")
+        startDownload(tag, existing.modelEntity)
     }
 
     private fun pauseDownload(tag: String) {
-        downloadJobs[tag]?.cancel()
+        Napier.d("⏸️ pauseDownload called for $tag")
+
+        val job = downloadJobs[tag]
+
+        if (job == null) {
+            Napier.w("⚠️ pauseDownload: No job found for $tag")
+        } else {
+            Napier.d("🛑 Cancelling job for $tag (isActive=${job.isActive})")
+            job.cancel()
+        }
+
         downloadJobs.remove(tag)
+
         _activeDownloads.update { currentMap ->
-            val existing = currentMap[tag] ?: return@update currentMap
-            currentMap + (tag to existing.copy(status = PullStatus.queued, message = "Paused"))
+            val existing = currentMap[tag]
+
+            if (existing == null) {
+                Napier.w("⚠️ pauseDownload: No state entry found for $tag")
+                return@update currentMap
+            }
+
+            Napier.d("📝 Updating state to QUEUED for $tag")
+
+            currentMap + (
+                    tag to existing.copy(
+                        status = PullStatus.queued,
+                        message = "Paused"
+                    )
+                    )
         }
     }
 
     private fun cancelDownload(tag: String) {
-        downloadJobs[tag]?.cancel()
+        Napier.d("❌ cancelDownload called for $tag")
+
+        val job = downloadJobs[tag]
+
+        if (job == null) {
+            Napier.w("⚠️ cancelDownload: No job found for $tag")
+        } else {
+            Napier.d("🛑 Cancelling job for $tag (isActive=${job.isActive})")
+            job.cancel()
+        }
+
         downloadJobs.remove(tag)
-        _activeDownloads.update { it - tag }
+
+        _activeDownloads.update { currentMap ->
+            Napier.d("🗑 Removing $tag from activeDownloads")
+            currentMap - tag
+        }
     }
 
     private fun dismissDownload(tag: String) {
-        _activeDownloads.update { it - tag }
+        Napier.d("🧹 dismissDownload called for $tag")
+
+        if (downloadJobs[tag]?.isActive == true) {
+            Napier.w("⚠️ dismissDownload: Job still active for $tag — cancelling first")
+            downloadJobs[tag]?.cancel()
+            downloadJobs.remove(tag)
+        }
+
+        _activeDownloads.update { currentMap ->
+            Napier.d("🗑 Removing $tag from state (dismiss)")
+            currentMap - tag
+        }
+    }
+}
+
+
+fun String.toPullStatus(): PullStatus {
+    val normalized = trim().lowercase()
+
+    return when {
+        // Actively downloading / working
+        normalized.contains("pull") ||
+        normalized.contains("download") ||
+        normalized.contains("manifest") ||
+        normalized.contains("verify") ||
+        normalized.contains("write") ||
+        normalized.contains("layer") -> PullStatus.pulling
+
+        // Explicit queued / paused state
+        normalized.contains("queue") ||
+        normalized.contains("paused") -> PullStatus.queued
+
+        // Completed successfully
+        normalized.contains("done") ||
+        normalized.contains("success") ||
+        normalized.contains("completed") -> PullStatus.done
+
+        // Any failure
+        normalized.contains("error") ||
+        normalized.contains("fail") -> PullStatus.error
+
+        // Default fallback (safe assumption)
+        else -> PullStatus.pulling
     }
 }
