@@ -194,7 +194,7 @@ fun ChatMainContent(
 
             false -> ChatContentScreen(
                 modifier = Modifier
-//                    .padding(paddingValues)
+                    .padding(paddingValues)
                 ,
                 messages = messages,
                 inputBarState = inputBarState,
