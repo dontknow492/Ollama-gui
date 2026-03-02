@@ -15,15 +15,21 @@ actual class PlatformConfiguration(
 @Composable
 actual fun rememberPlatformConfiguration(): PlatformConfiguration {
     val windowInfo = LocalWindowInfo.current
-    val density = LocalDensity.current.density
-    return remember(windowInfo) {
-        val widthPx = windowInfo.containerSize.width
-        val heightPx = windowInfo.containerSize.height
+    val density = LocalDensity.current
 
-        // Convert pixels to dp (simplified - you might want more precise conversion)
+    return remember(windowInfo.containerSize, density) {
+
+        val widthDp = with(density) {
+            windowInfo.containerSize.width.toDp().value.toInt()
+        }
+
+        val heightDp = with(density) {
+            windowInfo.containerSize.height.toDp().value.toInt()
+        }
+
         PlatformConfiguration(
-            screenWidthDp = (widthPx / density).toInt(),
-            screenHeightDp = (heightPx / density).toInt()
+            screenWidthDp = widthDp,
+            screenHeightDp = heightDp
         )
     }
 }

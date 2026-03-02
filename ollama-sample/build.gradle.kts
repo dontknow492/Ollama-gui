@@ -68,6 +68,9 @@ kotlin {
                 // datastore
                 implementation(libs.datastore.core)
 
+                // navigation
+                implementation(libs.navigation.compose)
+
 
             }
         }

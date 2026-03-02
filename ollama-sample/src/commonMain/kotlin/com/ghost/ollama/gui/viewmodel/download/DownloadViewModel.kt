@@ -8,11 +8,13 @@ import com.ghost.ollama.gui.ModelEntity
 import com.ghost.ollama.gui.models.DatabasePopulator
 import com.ghost.ollama.gui.repository.DownloadModelRepository
 import com.ghost.ollama.gui.repository.ModelWithTags
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
+
 
 class DownloadViewModel(
     private val repository: DownloadModelRepository,
@@ -24,25 +26,40 @@ class DownloadViewModel(
     private val _activeDownloads = MutableStateFlow<Map<String, ActiveDownload>>(emptyMap())
     private val _selectedModel = MutableStateFlow<ModelWithTags?>(null)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pagedModels = combine(
+        _searchQuery,
+        _capabilityFilter
+    ) { search, capability ->
+        search to capability
+    }
+        .flatMapLatest { (search, capability) ->
+            repository.getModelsPaged(search, capability)
+        }
+        .cachedIn(viewModelScope)
+
+
+
     // Combine states into one UI state
     val state: StateFlow<DownloadUiState> = combine(
         _searchQuery,
         _capabilityFilter,
         _activeDownloads,
-        _selectedModel,
+        _selectedModel
     ) { search, capability, downloads, selectedModel ->
+
         DownloadUiState(
-            pagedModels = repository.getModelsPaged(search, capability).cachedIn(viewModelScope),
             searchQuery = search,
             activeCapability = capability,
             activeDownloads = downloads,
             selectedModel = selectedModel
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = DownloadUiState()
-    )
+    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DownloadUiState()
+        )
 
     private val _sideEffects = Channel<DownloadSideEffect>(Channel.BUFFERED)
     val sideEffects = _sideEffects.receiveAsFlow()

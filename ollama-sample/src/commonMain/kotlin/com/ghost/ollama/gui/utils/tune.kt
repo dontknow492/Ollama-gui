@@ -2,6 +2,7 @@ package com.ghost.ollama.gui.utils
 
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.ui.components.TuneOptions
+import com.ghost.ollama.models.chat.ChatOptions
 
 // Extension function to convert SessionView to TuneOptions
 fun SessionView.toTuneOptions(): TuneOptions {
@@ -17,6 +18,22 @@ fun SessionView.toTuneOptions(): TuneOptions {
         format = this.format
     )
 }
+
+
+fun SessionView.toChatOptions(): ChatOptions {
+    return ChatOptions(
+        seed = this.seed?.toInt(),
+        temperature = this.temperature?.toFloat(),
+        topK = this.topK?.toInt(),
+        topP = this.topP?.toFloat(),
+        minP = this.minP?.toFloat(),
+        stop = this.stop,
+        numCtx = this.numCtx?.toInt(),
+        numPredict = this.numPredict?.toInt(),
+    )
+}
+
+
 
 // Optional: Extension function to apply TuneOptions to a SessionView builder/update
 fun SessionView.applyTuneOptions(tuneOptions: TuneOptions): SessionView {

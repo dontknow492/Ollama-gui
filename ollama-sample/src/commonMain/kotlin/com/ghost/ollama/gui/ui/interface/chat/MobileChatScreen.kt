@@ -21,6 +21,7 @@ fun MobileChatScreen(
     snackbarHostState: SnackbarHostState,
     onChatEvent: (ChatEvent) -> Unit,
     onEvent: (SessionEvent) -> Unit,
+    onDownloadButtonClick: () -> Unit,
     sideEffects: Flow<SessionSideEffect>
 ) {
     val mobileDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -55,7 +56,8 @@ fun MobileChatScreen(
             isMobile = true,
             onChatEvent = onChatEvent,
             onSessionEvent = onEvent,
-            onMenuClick = { scope.launch { mobileDrawerState.open() } }
+            onMenuClick = { scope.launch { mobileDrawerState.open() } },
+            onDownloadButtonClick = onDownloadButtonClick
         )
     }
     if (isSettingOpen) {

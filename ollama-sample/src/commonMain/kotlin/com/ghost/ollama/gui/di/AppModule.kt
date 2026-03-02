@@ -97,7 +97,7 @@ val viewModelModule = module {
 
     factory { GlobalSettingsViewModel(get(), get()) }
 
-    factory { DownloadViewModel(get(), get()) }
+    single { DownloadViewModel(get(), get()) }
 
 
 }

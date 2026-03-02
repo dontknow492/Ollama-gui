@@ -22,6 +22,7 @@ import io.github.aakira.napier.Napier
 import kotlinx.coroutines.launch
 import ollama_kmp.ollama_sample.generated.resources.Res
 import ollama_kmp.ollama_sample.generated.resources.clear_all
+import ollama_kmp.ollama_sample.generated.resources.download
 import ollama_kmp.ollama_sample.generated.resources.left_panel_open
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -31,7 +32,8 @@ import org.koin.compose.viewmodel.koinViewModel
 fun ChatScreen(
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
-    sessionViewModel: SessionViewModel = koinViewModel()
+    sessionViewModel: SessionViewModel = koinViewModel(),
+    onDownloadButtonClick: () -> Unit,
 ) {
     // 1. Observe the UI State
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -77,7 +79,8 @@ fun ChatScreen(
                 snackbarHostState = snackbarHostState,
                 onEvent = sessionViewModel::onEvent,
                 sideEffects = sessionViewModel.sideEffects,
-                onChatEvent = viewModel::onEvent
+                onChatEvent = viewModel::onEvent,
+                onDownloadButtonClick = onDownloadButtonClick
             )
         } else {
             DesktopChatScreen(
@@ -87,7 +90,8 @@ fun ChatScreen(
                 snackbarHostState = snackbarHostState,
                 onEvent = sessionViewModel::onEvent,
                 sideEffects = sessionViewModel.sideEffects,
-                onChatEvent = viewModel::onEvent
+                onChatEvent = viewModel::onEvent,
+                onDownloadButtonClick = onDownloadButtonClick
             )
         }
     }
@@ -103,6 +107,7 @@ fun ChatMainContent(
     snackbarHostState: SnackbarHostState,
     isMobile: Boolean,
     onMenuClick: () -> Unit,
+    onDownloadButtonClick: () -> Unit,
     onChatEvent: (ChatEvent) -> Unit,
     onSessionEvent: (SessionEvent) -> Unit,
     modifier: Modifier = Modifier
@@ -148,7 +153,7 @@ fun ChatMainContent(
             ChatTopBar(
                 appTitle = "Ollama",
                 session = state.session,
-                onClearChat = { onChatEvent(ChatEvent.ClearChat) },
+                onDownloadButtonClick = onDownloadButtonClick,
                 onRename = { renameSession = it },
                 onDeleteSession = { deleteSession = it },
                 onEvent = onSessionEvent
@@ -249,7 +254,7 @@ fun ChatMainContent(
 private fun ChatTopBar(
     appTitle: String,
     session: SessionView?,
-    onClearChat: (SessionView) -> Unit,
+    onDownloadButtonClick: () -> Unit,
     onRename: (SessionView) -> Unit,
     onDeleteSession: (SessionView) -> Unit,
     onEvent: (SessionEvent) -> Unit
@@ -304,22 +309,19 @@ private fun ChatTopBar(
         }
 
         // User Avatar
-        if (session != null) {
-            IconButton(onClick = { onClearChat(session) }) {
-                Surface(
-                    shape = CircleShape, tonalElevation = 2.dp, modifier = Modifier.size(32.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(Res.drawable.clear_all),
-                            contentDescription = "Clear Chat",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+        IconButton(onClick = onDownloadButtonClick) {
+            Surface(
+                shape = CircleShape, tonalElevation = 2.dp, modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(Res.drawable.download),
+                        contentDescription = "download",
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
-
     })
 }
 

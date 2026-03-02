@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import com.ghost.ollama.gui.repository.AppTheme
 import com.ghost.ollama.gui.repository.SettingsRepository
 import com.ghost.ollama.gui.ui.`interface`.chat.ChatScreen
+import com.ghost.ollama.gui.ui.navigation.NavigationRoute
 import com.ghost.ollama.gui.ui.theme.OllamaTheme
 import org.koin.compose.koinInject
 
@@ -22,9 +23,6 @@ fun App() {
 //    val appTheme: AppTheme = settingRepositor
 
     OllamaTheme(themeMode = themeMode) {
-        Surface {
-//            DownloadScreen()
-            ChatScreen()
-        }
+        NavigationRoute()
     }
 }

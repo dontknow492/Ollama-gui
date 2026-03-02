@@ -8,9 +8,6 @@ import kotlinx.coroutines.flow.emptyFlow
 
 // --- STATE ---
 data class DownloadUiState(
-    // Paging list of all models in the library
-    val pagedModels: Flow<PagingData<ModelEntity>> = emptyFlow(),
-
     // Search and Filter parameters
     val searchQuery: String = "",
     val activeCapability: String? = null,

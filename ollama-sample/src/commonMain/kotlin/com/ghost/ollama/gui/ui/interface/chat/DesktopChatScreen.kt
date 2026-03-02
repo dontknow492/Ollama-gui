@@ -25,6 +25,7 @@ fun DesktopChatScreen(
     snackbarHostState: SnackbarHostState,
     onChatEvent: (ChatEvent) -> Unit,
     onEvent: (SessionEvent) -> Unit,
+    onDownloadButtonClick: () -> Unit,
     sideEffects: Flow<SessionSideEffect>
 
 ) {
@@ -74,6 +75,7 @@ fun DesktopChatScreen(
             onMenuClick = { }, // Unused on desktop
             onChatEvent = onChatEvent,
             onSessionEvent = onEvent,
+            onDownloadButtonClick = onDownloadButtonClick,
             modifier = Modifier.weight(1f)
         )
     }

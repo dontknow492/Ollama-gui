@@ -55,17 +55,8 @@ Example layout (KMP convention):
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── gradle
-├── src
-│   ├── commonMain
-│   │   └── kotlin
-│   │       └── com
-│   │           └── example
-│   │               └── ollama
-│   │                   ├── OllamaClient.kt
-│   │                   └── models.kt
-│   ├── jvmMain
-│   ├── linuxX64Main
-│   └── jsMain
+├── ollama-core // api 
+├── ollama-sample // gui app
 ├── README.md
 └── LICENSE
 ```

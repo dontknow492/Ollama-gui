@@ -280,7 +280,7 @@ class ChatViewModel(
 
             try {
                 ollamaRepository.sendChatMessageStreaming(
-                    sessionId = activeSession.id,
+                    session = activeSession,
                     modelName = selectedModel.value!!.name,
                     content = content,
                     role = MessageRole.USER

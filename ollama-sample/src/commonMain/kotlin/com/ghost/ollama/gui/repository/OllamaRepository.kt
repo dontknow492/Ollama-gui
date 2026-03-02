@@ -16,6 +16,7 @@ import com.ghost.ollama.gui.MessageView
 import com.ghost.ollama.gui.SessionView
 import com.ghost.ollama.gui.models.ModelDetailState
 import com.ghost.ollama.gui.models.ModelsState
+import com.ghost.ollama.gui.utils.toChatOptions
 import com.ghost.ollama.gui.utils.toUiChatMessage
 import com.ghost.ollama.gui.viewmodel.UiChatMessage
 import com.ghost.ollama.models.chat.ChatMessage
@@ -297,7 +298,7 @@ class OllamaRepository(
      * and streams the Assistant's response while progressively updating the DB.
      */
     fun sendChatMessageStreaming(
-        sessionId: String,
+        session: SessionView,
         modelName: String,
         content: String,
         role: ChatMessage.Role = ChatMessage.Role.USER
@@ -306,7 +307,7 @@ class OllamaRepository(
 
 
         val messageCountBefore = entityQueries
-            .countMessages(sessionId)
+            .countMessages(session.id)
             .executeAsOne()
 
         val isFirstMessage = messageCountBefore == 0L
@@ -315,7 +316,7 @@ class OllamaRepository(
         // 1. Save User's message to DB
         entityQueries.insertMessage(
             id = generateUuid(),
-            session_id = sessionId,
+            session_id = session.id,
             model_name = modelName,
             role = role.name.lowercase(),
             content = content,
@@ -337,21 +338,21 @@ class OllamaRepository(
             entityQueries.updateSessionTitle(
                 title = trimmedTitle.ifBlank { "New Chat" },
                 updatedAt = now,
-                id = sessionId
+                id = session.id,
             )
         }
 
 
-        entityQueries.updateSessionTimestamp(now, sessionId)
+        entityQueries.updateSessionTimestamp(now, session.id)
 
         // 2. Build the context history for Ollama from the DB
-        val history = entityQueries.getMessagesBySessionId(sessionId).executeAsList().map { it.toApiChatMessage() }
+        val history = entityQueries.getMessagesBySessionId(session.id).executeAsList().map { it.toApiChatMessage() }
 
         // 3. Create an empty Assistant placeholder in DB for streaming
         val assistantMsgId = generateUuid()
         entityQueries.insertMessage(
             id = assistantMsgId,
-            session_id = sessionId,
+            session_id = session.id,
             model_name = modelName,
             role = ChatMessage.Role.ASSISTANT.name.lowercase(),
             content = "",
@@ -363,8 +364,14 @@ class OllamaRepository(
             is_done = false
         )
 
+        val options = session.toChatOptions()
+
         // 4. Trigger Network Request & Sync Stream chunks to DB
-        return ollamaClient.chatStream(model = modelName, messages = history)
+        return ollamaClient.chatStream(
+            model = modelName,
+            messages = history,
+            options = options
+        )
 
             .onEach { responseChunk ->
 //                delay(50) // Simulate network delay for testing streaming in UI
@@ -390,7 +397,7 @@ class OllamaRepository(
                         evalDuration = responseChunk.evalDuration,
                         id = assistantMsgId
                     )
-                    entityQueries.updateSessionTimestamp(currentTimeMillis(), sessionId)
+                    entityQueries.updateSessionTimestamp(currentTimeMillis(), session.id)
                 }
             }
             .flowOn(ioDispatcher) // Ensure network/DB runs off Main thread

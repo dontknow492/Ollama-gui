@@ -42,6 +42,9 @@ highlights = "1.1.0"
 datastoreCoreAndroid = "1.2.0"
 datastorePreferences = "1.2.0"
 
+
+navigation = "2.9.2"
+
 [libraries]
 
 # KotlinX
@@ -112,6 +115,9 @@ sqldelight-androidx-paging3-extension =  { module = "app.cash.sqldelight:android
 #datastore
 datastore-core = { module = "androidx.datastore:datastore-preferences-core", version.ref = "datastoreCoreAndroid" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
+
+#navigation
+navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation"}
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
